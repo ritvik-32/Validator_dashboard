@@ -2,7 +2,7 @@
 
 DELEGATOR="cosmos1ddle9tczl87gsvmeva3c48nenyng4n56kurw79"
 VALIDATOR="cosmosvaloper1ddle9tczl87gsvmeva3c48nenyng4n56nghmjk"
-ENDPOINTS="https://lcd.cosmos.dragonstake.io,https://cosmos-rest.staketab.org"
+ENDPOINTS="https://lcd.cosmos.dragonstake.io,https://cosmos-rest.staketab.org,https://cosmoshub.lava.build:443,https://cosmos-lcd.quickapi.com:443,https://rest.cosmoshub.goldenratiostaking.net,https://rest.lavenderfive.com:443/cosmoshub,https://api-cosmoshub.pupmos.network,https://api-cosmoshub-ia.cosmosia.notional.ventures/,https://lcd-cosmoshub.whispernode.com:443,https://cosmos-lcd.easy2stake.com"
 DENOM="uatom"
 AMOUNT_VALUE="ATOM"
 PGUSER="postgres"
@@ -60,22 +60,6 @@ COMM_TOTAL=$(echo "$COMM_RAW" | jq -r --arg DEN "$DENOM" '
 # Calculate total earnings
 TOTAL_EARNINGS=$(awk "BEGIN {print $REWARDS_TOTAL + $COMM_TOTAL}")
 
-# Print results
-echo "-----------------------------------"
-echo "Validator: $VALIDATOR"
-echo "Delegator: $DELEGATOR"
-echo "Denom     : $DENOM"
-echo "-----------------------------------"
-echo "Self Delegations    : $SELF_DELEGATIONS $DENOM"
-echo "External Delegations: $EXTERNAL_DELEGATIONS $DENOM"
-echo "Total Delegations   : $OVERALL_DELEGATIONS $DENOM"
-echo "Rewards             : $REWARDS_TOTAL $DENOM"
-echo "Validator Commission: $COMM_TOTAL $DENOM"
-echo "Total Earnings      : $TOTAL_EARNINGS $DENOM"
-echo "-----------------------------------"
-
-
-
 # Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO cosmos_data (validator_addr, self_delegations, external_delegations, rewards)
@@ -86,7 +70,6 @@ VALUES (
   '$TOTAL_EARNINGS $AMOUNT_VALUE'
 );
 "
-echo "Values inserted into Postgres table 'cosmos'."
 
 
 

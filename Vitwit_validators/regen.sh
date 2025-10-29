@@ -61,22 +61,6 @@ COMM_TOTAL=$(echo "$COMM_RAW" | jq -r --arg DEN "$DENOM" '
 # Calculate total earnings
 TOTAL_EARNINGS=$(awk "BEGIN {print $REWARDS_TOTAL + $COMM_TOTAL}")
 
-# Print results
-echo "-----------------------------------"
-echo "Validator: $VALIDATOR"
-echo "Delegator: $DELEGATOR"
-echo "Denom     : $DENOM"
-echo "-----------------------------------"
-echo "Self Delegations    : $SELF_DELEGATIONS $DENOM"
-echo "External Delegations: $EXTERNAL_DELEGATIONS $DENOM"
-echo "Total Delegations   : $OVERALL_DELEGATIONS $DENOM"
-echo "Rewards             : $REWARDS_TOTAL $DENOM"
-echo "Validator Commission: $COMM_TOTAL $DENOM"
-echo "Total Earnings      : $TOTAL_EARNINGS $DENOM"
-echo "-----------------------------------"
-
-
-
 # Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO regen_data (validator_addr, self_delegations, external_delegations, rewards)
@@ -87,7 +71,6 @@ VALUES (
   '$TOTAL_EARNINGS $AMOUNT_VALUE'
 );
 "
-echo "Values inserted into Postgres table 'agoric'."
 
 
 
