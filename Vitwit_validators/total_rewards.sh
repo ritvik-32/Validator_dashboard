@@ -183,10 +183,14 @@ for TABLE in $TABLES; do
         EXTERNAL_USD=$(calculate "$EXTERNAL_AMOUNT * $TOKEN_PRICE")
         REWARD_USD=$(calculate "$REWARD_AMOUNT * $TOKEN_PRICE")
         
-        # Add to running totals using our safe calculation function
+        # Add to running totals
         TOTAL_SELF_USD=$(calculate "$TOTAL_SELF_USD + $SELF_USD")
         TOTAL_EXTERNAL_USD=$(calculate "$TOTAL_EXTERNAL_USD + $EXTERNAL_USD")
-        TOTAL_REWARDS_USD=$(calculate "$TOTAL_REWARDS_USD + $REWARD_USD")
+        
+        # Only add to rewards total if it's not the 'avail' network
+        if [ "$NETWORK" != "avail" ]; then
+            TOTAL_REWARDS_USD=$(calculate "$TOTAL_REWARDS_USD + $REWARD_USD")
+        fi
         
         # Format and display the values
         display_name=${TOKEN_DISPLAY_NAMES[$TOKEN_UPPER]:-$TOKEN_UPPER}

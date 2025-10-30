@@ -49,18 +49,9 @@ SELF_DELEGATIONS=$(echo "$SELF_RAW" | jq -r \
 EXTERNAL_DELEGATIONS=$(awk "BEGIN {print $OVERALL_DELEGATIONS - $SELF_DELEGATIONS}")
 
 # Fetch rewards for the given denom
-REWARDS_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/delegators/$DELEGATOR/rewards")
-REWARDS_TOTAL=$(echo "$REWARDS_RAW" | jq -r --arg VAL "$VALIDATOR" --arg DEN "$DENOM" '
-  [.rewards[] | select(.validator_address==$VAL) | .reward[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
-
-# Fetch validator commission for the given denom
-COMM_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/validators/$VALIDATOR/commission")
-COMM_TOTAL=$(echo "$COMM_RAW" | jq -r --arg DEN "$DENOM" '
-  [.commission.commission[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
-
-# Calculate total earnings
-TOTAL_EARNINGS=$(awk "BEGIN {print $REWARDS_TOTAL + $COMM_TOTAL}")
-
+OUTSTANDING_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/validators/$VALIDATOR/outstanding_rewards") 
+OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewards.rewards[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
+OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 # Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO regen_data (validator_addr, self_delegations, external_delegations, rewards)
@@ -68,7 +59,7 @@ VALUES (
   '$VALIDATOR',
   '$SELF_DELEGATIONS $AMOUNT_VALUE',
   '$EXTERNAL_DELEGATIONS $AMOUNT_VALUE',
-  '$TOTAL_EARNINGS $AMOUNT_VALUE'
+  '$OUTSTANDING_TOTAL $AMOUNT_VALUE'
 );
 "
 

@@ -18,14 +18,8 @@ fi
 SELF_STAKE=$(echo "$JSON" | jq -r '(.result.selfStake // 0 | tonumber) / 1e18')
 EXTERNAL_STAKE=$(echo "$JSON" | jq -r '(.result.delegatedStake // 0 | tonumber) / 1e18')
 
-CLAIMED=$(echo "$JSON" | jq -r '(.result.claimedReward // 0 | tonumber)')
 VAL_UNCLAIMED=$(echo "$JSON" | jq -r '(.result.validatorUnclaimedRewards // 0 | tonumber)')
-DEL_CLAIMED=$(echo "$JSON" | jq -r '(.result.delegatorClaimedRewards // 0 | tonumber)')
-DEL_UNCLAIMED=$(echo "$JSON" | jq -r '(.result.delegatorUnclaimedRewards // 0 | tonumber)')
-
-COMMISSION=$(awk "BEGIN {print $COMMISSION_RATE * ($DEL_CLAIMED + $DEL_UNCLAIMED)}")
-
-TOTAL_REWARDS_WEI=$(awk "BEGIN {print $CLAIMED + $VAL_UNCLAIMED + $COMMISSION}")
+TOTAL_REWARDS_WEI=$(awk "BEGIN {print $VAL_UNCLAIMED}")
 
 TOTAL_REWARDS=$(awk "BEGIN {print $TOTAL_REWARDS_WEI / 1e18}")
 
