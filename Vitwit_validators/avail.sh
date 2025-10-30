@@ -8,6 +8,16 @@ PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
+fetch_avail_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=avail&vs_currencies=usd")
+    echo "$price_data" | jq -r '.avail.usd'
+}
+
+# Fetch Avail token price
+TOKEN_PRICE=$(fetch_avail_price)
+echo "Current Avail price: \$$TOKEN_PRICE"
+
 # Endpoints
 VAL_ENDPOINT="https://avail.api.subscan.io/api/scan/staking/validator"
 REWARD_ENDPOINT="https://avail.api.subscan.io/api/scan/staking/total_reward"
@@ -30,11 +40,12 @@ REWARD_RAW=$(curl -s -X POST "$REWARD_ENDPOINT" \
 REWARDS=$(echo "$REWARD_RAW" | jq -r ".data.sum | tonumber / $DENOM_DIV")
 
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO avail_data (validator_addr, self_delegations, external_delegations, rewards)
+INSERT INTO avail_data (validator_addr, self_delegations, external_delegations, rewards, price)
 VALUES (
   '$VALIDATOR',
   '$SELF_STAKE $AMOUNT_VALUE',
   '$EXTERNAL_STAKE $AMOUNT_VALUE',
-  '$REWARDS $AMOUNT_VALUE'
+  '$REWARDS $AMOUNT_VALUE',
+  '$TOKEN_PRICE'
 );
 "

@@ -8,6 +8,15 @@ AMOUNT_VALUE="NAM"
 PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
+fetch_namada_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=namada&vs_currencies=usd")
+    echo "$price_data" | jq -r '.namada.usd'
+}
+
+# Fetch Namada token price
+TOKEN_PRICE=$(fetch_namada_price)
+echo "Current Namada price: \$$TOKEN_PRICE"
 
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
 BASE_URL=""

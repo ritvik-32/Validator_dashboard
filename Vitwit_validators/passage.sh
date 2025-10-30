@@ -9,6 +9,16 @@ PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
+fetch_pasg_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=passage&vs_currencies=usd")
+    echo "$price_data" | jq -r '.passage.usd'
+}
+
+# Fetch PASG token price
+TOKEN_PRICE=$(fetch_pasg_price)
+echo "Current PASG price: \$$TOKEN_PRICE"
+
 # Select first reachable endpoint
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
 BASE_URL=""

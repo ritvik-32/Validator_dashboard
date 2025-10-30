@@ -9,6 +9,16 @@ PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
+fetch_osmo_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=osmosis&vs_currencies=usd")
+    echo "$price_data" | jq -r '.osmosis.usd'
+}
+
+# Fetch OSMO token price
+TOKEN_PRICE=$(fetch_osmo_price)
+echo "Current OSMO price: \$$TOKEN_PRICE"
+
 # Select first reachable endpoint
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
 BASE_URL=""

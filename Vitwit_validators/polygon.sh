@@ -8,6 +8,16 @@ PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 COMMISSION_RATE="0.05"
 
+fetch_matic_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=polygon-ecosystem-token&vs_currencies=usd")
+    echo "$price_data" | jq -r '.["polygon-ecosystem-token"].usd'
+}
+
+# Fetch MATIC token price
+TOKEN_PRICE=$(fetch_matic_price)
+echo "Current MATIC price: \$$TOKEN_PRICE"
+
 JSON=$(curl -s --max-time 5 "$API_URL")
 
 if ! echo "$JSON" | jq empty >/dev/null 2>&1; then

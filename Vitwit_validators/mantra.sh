@@ -8,6 +8,15 @@ AMOUNT_VALUE="om"
 PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
+fetch_mantra_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=mantra-dao&vs_currencies=usd")
+    echo "$price_data" | jq -r '.["mantra-dao"].usd'
+}
+
+# Fetch Mantra token price
+TOKEN_PRICE=$(fetch_mantra_price)
+echo "Current Mantra price: \$$TOKEN_PRICE"
 
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
 BASE_URL=""

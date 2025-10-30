@@ -9,6 +9,17 @@ PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
+
+fetch_regen_price() {
+    local price_data
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=regen&vs_currencies=usd")
+    echo "$price_data" | jq -r '.regen.usd'
+}
+
+# Fetch REGEN token price
+TOKEN_PRICE=$(fetch_regen_price)
+echo "Current REGEN price: \$$TOKEN_PRICE"
+
 # Select first reachable endpoint
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
 BASE_URL=""

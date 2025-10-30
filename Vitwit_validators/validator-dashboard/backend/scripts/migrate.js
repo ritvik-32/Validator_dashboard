@@ -26,13 +26,15 @@ async function createTables() {
     for (const network of networks) {
       const tableName = `${network}_data`;
       
-      const query = `
+      // First create table if it doesn't exist
+      let query = `
         CREATE TABLE IF NOT EXISTS ${tableName} (
           id SERIAL PRIMARY KEY,
           validator_addr VARCHAR(255) NOT NULL,
           self_delegations VARCHAR(255) NOT NULL,
           external_delegations VARCHAR(255) NOT NULL,
           rewards VARCHAR(255) NOT NULL,
+          price NUMERIC(20, 10),
           timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -41,6 +43,21 @@ async function createTables() {
         CREATE INDEX IF NOT EXISTS idx_${tableName}_validator ON ${tableName}(validator_addr);
         CREATE INDEX IF NOT EXISTS idx_${tableName}_timestamp ON ${tableName}(timestamp);
       `;
+      
+      await sequelize.query(query);
+      
+      // Now add price column if it doesn't exist
+      const addPriceColumn = `
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                         WHERE table_name = '${tableName}' AND column_name = 'price') THEN
+            ALTER TABLE ${tableName} ADD COLUMN price NUMERIC(20, 10);
+          END IF;
+        END $$;
+      `;
+      
+      await sequelize.query(addPriceColumn);
 
       await sequelize.query(query);
       console.log(`Created/Verified table: ${tableName}`);
