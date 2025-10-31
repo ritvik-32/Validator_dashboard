@@ -1,5 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import axios from 'axios';
+import { Chart, registerables } from 'chart.js';
+import { Chart as ChartJS } from 'chart.js';
+import 'chartjs-adapter-date-fns';
 import { 
   Container, 
   Typography, 
@@ -364,6 +367,149 @@ function App() {
     validators: true
   });
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [allNetworksData, setAllNetworksData] = useState({});
+  const [isLoadingAllNetworks, setIsLoadingAllNetworks] = useState(true);
+
+  // Fetch data for all networks
+  const fetchAllNetworksData = async () => {
+    if (!networks.length) return;
+    
+    setIsLoadingAllNetworks(true);
+    const allData = {};
+    
+    try {
+      // Fetch data for each network in parallel
+      const networkPromises = networks.map(async (network) => {
+        try {
+          const res = await axios.get(`${NETWORKS_API}/${network}/history?range=${range}`);
+          return { network, data: res.data || [] };
+        } catch (err) {
+          console.error(`Failed to fetch data for ${network}:`, err);
+          return { network, data: [] };
+        }
+      });
+      
+      const results = await Promise.all(networkPromises);
+      
+      // Convert array of results to object with network names as keys
+      results.forEach(({ network, data }) => {
+        allData[network] = data;
+      });
+      
+      setAllNetworksData(allData);
+    } catch (err) {
+      console.error('Error fetching all networks data:', err);
+    } finally {
+      setIsLoadingAllNetworks(false);
+    }
+  };
+
+  // Register chart components
+  useEffect(() => {
+    Chart.register(...registerables);
+  }, []);
+
+  // Network token prices (in USD)
+  const tokenPrices = {
+    'avail': 0.00906833,
+    'cosmos': 2.99,
+    'regen': 0.00973236,
+    'namada': 0.0098712,
+    'mantra': 0.108471,
+    'agoric': 0.01003554,
+    'osmosis': 0.112654,
+    'passage': 0.00098393,
+    'akash': 0.715603,
+    'cheqd': 0.01724347,
+    'polygon': 0.187404,
+    // Add other networks with their respective prices
+  };
+
+  // Helper function to convert token amount to USD
+  const toUSD = (amount, network) => {
+    const price = tokenPrices[network.toLowerCase()] || 1; // Default to 1 if price not found
+    return parseFloat(amount) * price;
+  };
+
+  // Process data for self-delegation chart
+  const processSelfDelegationData = useMemo(() => {
+    const datasets = [];
+    const colors = [
+      '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
+      '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'
+    ];
+    
+    Object.entries(allNetworksData).forEach(([network, data], index) => {
+      if (!data.length) return;
+      
+      datasets.push({
+        label: network.charAt(0).toUpperCase() + network.slice(1),
+        data: data.map(d => {
+          const amount = parseFloat((d.self_delegations || '0').split(' ')[0]) || 0;
+          return {
+            x: new Date(d.timestamp),
+            y: toUSD(amount, network)
+          };
+        }),
+        borderColor: colors[index % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        pointHoverBorderWidth: 2,
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: colors[index % colors.length],
+        borderJoinStyle: 'round',
+        borderCapStyle: 'round',
+        fill: false
+      });
+    });
+    
+    return {
+      datasets
+    };
+  }, [allNetworksData]);
+
+  // Process data for external delegation chart
+  const processExternalDelegationData = useMemo(() => {
+    const datasets = [];
+    const colors = [
+      '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
+      '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'
+    ];
+    
+    Object.entries(allNetworksData).forEach(([network, data], index) => {
+      if (!data.length) return;
+      
+      datasets.push({
+        label: network.charAt(0).toUpperCase() + network.slice(1),
+        data: data.map(d => {
+          const amount = parseFloat((d.external_delegations || '0').split(' ')[0]) || 0;
+          return {
+            x: new Date(d.timestamp),
+            y: toUSD(amount, network)
+          };
+        }),
+        borderColor: colors[index % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        pointHoverBorderWidth: 2,
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: colors[index % colors.length],
+        borderJoinStyle: 'round',
+        borderCapStyle: 'round',
+        fill: false
+      });
+    });
+    
+    return {
+      datasets
+    };
+  }, [allNetworksData]);
 
   const fetchNetworks = async () => {
     try {
@@ -424,6 +570,7 @@ function App() {
       fetchValidatorList();
       fetchNetworkData();
     }
+    fetchAllNetworksData();
   }, [selectedNetwork, range]);
 
   // Get validator with highest self-delegation
@@ -746,6 +893,311 @@ function App() {
           </StyledPaper>
         </Grid>
       </Grid>
+
+      {/* Self Delegation Across All Networks */}
+      {selectedNetwork === 'all' && (
+        <>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <StyledPaper>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                    Self Delegation Across All Networks
+                  </Typography>
+                </Box>
+                <ChartContainer>
+                  {isLoadingAllNetworks ? (
+                    <LoadingOverlay>
+                      <CircularProgress size={24} sx={{ mr: 1 }} />
+                      <Typography variant="body2" sx={{ mt: 1 }}>Loading network data...</Typography>
+                    </LoadingOverlay>
+                  ) : (
+                    <Line 
+                      data={processSelfDelegationData}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                          mode: 'index',
+                          intersect: false,
+                        },
+                        plugins: {
+                          legend: {
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                              usePointStyle: true,
+                              padding: 20,
+                              color: theme.palette.text.secondary,
+                              font: {
+                                family: theme.typography.fontFamily,
+                                size: 13,
+                              },
+                            },
+                          },
+                          tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: theme.palette.background.paper,
+                            titleColor: theme.palette.text.primary,
+                            bodyColor: theme.palette.text.secondary,
+                            borderColor: theme.palette.divider,
+                            borderWidth: 1,
+                            padding: 16,
+                            boxShadow: theme.shadows[3],
+                            titleFont: {
+                              weight: 600,
+                              size: 14,
+                              family: theme.typography.fontFamily,
+                            },
+                            bodyFont: {
+                              size: 13,
+                              family: theme.typography.fontFamily,
+                            },
+                            callbacks: {
+                              label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                  label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                  label += '$' + context.parsed.y.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                  });
+                                }
+                                return label;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          x: {
+                            type: 'time',
+                            time: {
+                              unit: 'day',
+                              tooltipFormat: 'MMM d, yyyy',
+                              displayFormats: {
+                                day: 'MMM d'
+                              }
+                            },
+                            grid: {
+                              display: false,
+                              drawBorder: false,
+                            },
+                            ticks: {
+                              maxRotation: 0,
+                              padding: 10,
+                              color: theme.palette.text.secondary,
+                              font: {
+                                size: 12,
+                              },
+                            },
+                          },
+                          y: {
+                            grid: {
+                              borderDash: [3, 3],
+                              drawBorder: false,
+                              color: theme.palette.divider,
+                            },
+                            ticks: {
+                              padding: 10,
+                              color: theme.palette.text.secondary,
+                              font: {
+                                size: 12,
+                              },
+                              callback: function(value) {
+                                return '$' + value.toLocaleString(undefined, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 0
+                                });
+                              }
+                            }
+                          }
+                        },
+                        elements: {
+                          line: {
+                            tension: 0.4,
+                            borderWidth: 2,
+                          },
+                          point: {
+                            radius: 0,
+                            hoverRadius: 6,
+                            hoverBorderWidth: 2,
+                            backgroundColor: '#fff',
+                          },
+                        },
+                        layout: {
+                          padding: {
+                            top: 10,
+                            right: 20,
+                            bottom: 10,
+                            left: 10,
+                          },
+                        },
+                        animation: {
+                          duration: 1000,
+                        }
+                      }}
+                      height={400}
+                    />
+                  )}
+                </ChartContainer>
+              </StyledPaper>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <StyledPaper>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                    External Delegation Across All Networks
+                  </Typography>
+                </Box>
+                <ChartContainer>
+                  {isLoadingAllNetworks ? (
+                    <LoadingOverlay>
+                      <CircularProgress size={24} sx={{ mr: 1 }} />
+                      <Typography variant="body2" sx={{ mt: 1 }}>Loading network data...</Typography>
+                    </LoadingOverlay>
+                  ) : (
+                    <Line 
+                      data={processExternalDelegationData}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                          mode: 'index',
+                          intersect: false,
+                        },
+                        plugins: {
+                          legend: {
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                              usePointStyle: true,
+                              padding: 20,
+                              color: theme.palette.text.secondary,
+                              font: {
+                                family: theme.typography.fontFamily,
+                                size: 13,
+                              },
+                            },
+                          },
+                          tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: theme.palette.background.paper,
+                            titleColor: theme.palette.text.primary,
+                            bodyColor: theme.palette.text.secondary,
+                            borderColor: theme.palette.divider,
+                            borderWidth: 1,
+                            padding: 16,
+                            boxShadow: theme.shadows[3],
+                            titleFont: {
+                              weight: 600,
+                              size: 14,
+                              family: theme.typography.fontFamily,
+                            },
+                            bodyFont: {
+                              size: 13,
+                              family: theme.typography.fontFamily,
+                            },
+                            callbacks: {
+                              label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                  label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                  label += '$' + context.parsed.y.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                  });
+                                }
+                                return label;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          x: {
+                            type: 'time',
+                            time: {
+                              unit: 'day',
+                              tooltipFormat: 'MMM d, yyyy',
+                              displayFormats: {
+                                day: 'MMM d'
+                              }
+                            },
+                            grid: {
+                              display: false,
+                              drawBorder: false,
+                            },
+                            ticks: {
+                              maxRotation: 0,
+                              padding: 10,
+                              color: theme.palette.text.secondary,
+                              font: {
+                                size: 12,
+                              },
+                            },
+                          },
+                          y: {
+                            grid: {
+                              borderDash: [3, 3],
+                              drawBorder: false,
+                              color: theme.palette.divider,
+                            },
+                            ticks: {
+                              padding: 10,
+                              color: theme.palette.text.secondary,
+                              font: {
+                                size: 12,
+                              },
+                              callback: function(value) {
+                                return '$' + value.toLocaleString(undefined, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 0
+                                });
+                              }
+                            }
+                          }
+                        },
+                        elements: {
+                          line: {
+                            tension: 0.4,
+                            borderWidth: 2,
+                          },
+                          point: {
+                            radius: 0,
+                            hoverRadius: 6,
+                            hoverBorderWidth: 2,
+                            backgroundColor: '#fff',
+                          },
+                        },
+                        layout: {
+                          padding: {
+                            top: 10,
+                            right: 20,
+                            bottom: 10,
+                            left: 10,
+                          },
+                        },
+                        animation: {
+                          duration: 1000,
+                        }
+                      }}
+                      height={400}
+                    />
+                  )}
+                </ChartContainer>
+              </StyledPaper>
+            </Grid>
+          </Grid>
+        </>
+      )}
 
     </Container>
   );

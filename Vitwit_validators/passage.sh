@@ -64,12 +64,13 @@ OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewar
 OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 # Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO passage_data (validator_addr, self_delegations, external_delegations, rewards)
+INSERT INTO passage_data (validator_addr, self_delegations, external_delegations, rewards, price)
 VALUES (
   '$VALIDATOR',
   '$SELF_DELEGATIONS $AMOUNT_VALUE',
   '$EXTERNAL_DELEGATIONS $AMOUNT_VALUE',
-  '$OUTSTANDING_TOTAL $AMOUNT_VALUE'
+  '$OUTSTANDING_TOTAL $AMOUNT_VALUE',
+  $TOKEN_PRICE
 );
 "
 

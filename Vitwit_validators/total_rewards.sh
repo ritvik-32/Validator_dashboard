@@ -9,38 +9,39 @@ PGHOST="localhost"
 # CoinGecko API endpoint
 COINGECKO_API="https://api.coingecko.com/api/v3"
 
-# Token mapping (CoinGecko ID : Token Symbol)
-# Updated to match actual token symbols in the database
-declare -A TOKEN_IDS=(
-    ["agoric"]="BLD"
-    ["akash-network"]="AKT"
-    ["avail"]="AVAIL"
-    ["cheqd-network"]="CHEQ"
-    ["cosmos"]="ATOM"
-    ["mantra-dao"]="OM"
-    ["namada"]="NAM"
-    ["nomic"]="NOM"
-    ["osmosis"]="OSMO"
-    ["passage"]="PASG"
-    ["polygon-ecosystem-token"]="POL"
-    ["regen"]="REGEN"
-)
+# Function to get network info from database
+get_network_info() {
+    # Get all network tables that follow the pattern _data
+    local query="SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name LIKE '%_data' 
+                AND table_name != 'total_rewards'"
+    
+    # Get the list of networks
+    local networks=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$query" | xargs -n1 | sed 's/_data//')
+    
+    # For each network, get the token symbol from its table
+    for net in $networks; do
+        # Get the token symbol (assuming it's in the rewards field)
+        local symbol_query="SELECT split_part(rewards, ' ', 2) FROM ${net}_data WHERE rewards IS NOT NULL AND rewards != '' LIMIT 1"
+        local symbol=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$symbol_query" 2>/dev/null | xargs)
+        
+        if [ -n "$symbol" ] && [ "$symbol" != "(0 rows)" ]; then
+            # Add to TOKEN_IDS array
+            TOKEN_IDS["$net"]="$symbol"
+            # Use the network name as the display name (capitalized)
+            TOKEN_DISPLAY_NAMES["$symbol"]="$(tr '[:lower:]' '[:upper:]' <<< ${net:0:1})${net:1}"
+        fi
+    done
+}
 
-# Mapping of token symbols to display names
-declare -A TOKEN_DISPLAY_NAMES=(
-    ["BLD"]="Agoric"
-    ["AKT"]="Akash"
-    ["AVAIL"]="Avail"
-    ["CHEQ"]="Cheqd"
-    ["ATOM"]="Cosmos"
-    ["OM"]="Mantra"
-    ["NAM"]="Namada"
-    ["NOM"]="Nomic"
-    ["OSMO"]="Osmosis"
-    ["PASG"]="Passage"
-    ["POL"]="Polygon"
-    ["REGEN"]="Regen"
-)
+# Initialize arrays
+declare -A TOKEN_IDS
+declare -A TOKEN_DISPLAY_NAMES
+
+# Populate the arrays from database
+get_network_info
+
 
 # Create total_rewards table if it doesn't exist
 PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" <<EOSQL
@@ -53,40 +54,47 @@ CREATE TABLE IF NOT EXISTS total_rewards (
 );
 EOSQL
 
-# Fetch current prices from CoinGecko
-fetch_prices() {
-    local ids
-    # Join all token IDs with commas
-    ids=$(printf ",%s" "${!TOKEN_IDS[@]}")
-    ids=${ids:1}  # Remove leading comma
+# Function to get price from database for a network
+get_network_price() {
+    local network=$1
+    local token_symbol=${TOKEN_IDS[$network]}
     
-    # Make the API request
-    local response
-    response=$(curl -s "$COINGECKO_API/simple/price?ids=$ids&vs_currencies=usd" || echo "{}")
+    if [ -z "$token_symbol" ]; then
+        echo "0"
+        return 1
+    fi
     
-    echo "API Response: $response" >&2
+    # Get the latest price from the network's data table
+    local query="SELECT price FROM ${network}_data WHERE price IS NOT NULL AND price != 0 ORDER BY timestamp DESC LIMIT 1"
+    local price=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$query" 2>/dev/null | xargs)
     
-    # Parse the response
-    for id in "${!TOKEN_IDS[@]}"; do
-        local price
-        price=$(echo "$response" | jq -r ".\"$id\".usd // \"null\"")
-        token_symbol="${TOKEN_IDS[$id]}"
-        
-        if [ "$price" = "null" ] || [ -z "$price" ]; then
-            echo "Warning: Could not fetch price for $id ($token_symbol), setting to 0" >&2
-            TOKEN_PRICES["$token_symbol"]=0
-        else
-            TOKEN_PRICES["$token_symbol"]="$price"
-            echo "Price for $token_symbol: \$$price" >&2
-        fi
-    done
+    if [ -z "$price" ] || [ "$price" = "(0 rows)" ]; then
+        echo "0"
+        return 1
+    fi
+    
+    echo "$price"
+    return 0
 }
 
 # Initialize token prices array
 declare -A TOKEN_PRICES
 
-echo "Fetching token prices from CoinGecko..."
-fetch_prices
+echo "Fetching token prices from database..."
+
+# Get prices for each network
+for network in "${!TOKEN_IDS[@]}"; do
+    token_symbol="${TOKEN_IDS[$network]}"
+    price=$(get_network_price "$network")
+    
+    if [ "$?" -eq 0 ] && [ "$price" != "0" ]; then
+        TOKEN_PRICES["$token_symbol"]="$price"
+        echo "Price for $token_symbol: \$$price"
+    else
+        echo "Warning: Could not find price for $network ($token_symbol) in database" >&2
+        TOKEN_PRICES["$token_symbol"]="0"
+    fi
+done
 
 # Initialize totals
 TOTAL_SELF_USD=0
@@ -187,10 +195,11 @@ for TABLE in $TABLES; do
         TOTAL_SELF_USD=$(calculate "$TOTAL_SELF_USD + $SELF_USD")
         TOTAL_EXTERNAL_USD=$(calculate "$TOTAL_EXTERNAL_USD + $EXTERNAL_USD")
         
-        # Only add to rewards total if it's not the 'avail' network
-        if [ "$NETWORK" != "avail" ]; then
-            TOTAL_REWARDS_USD=$(calculate "$TOTAL_REWARDS_USD + $REWARD_USD")
+        # Skip AVAIL rewards from total
+        if [ "$NETWORK" = "avail" ]; then
+            REWARD_USD=0  # Set rewards to 0 for AVAIL
         fi
+        TOTAL_REWARDS_USD=$(calculate "$TOTAL_REWARDS_USD + $REWARD_USD")
         
         # Format and display the values
         display_name=${TOKEN_DISPLAY_NAMES[$TOKEN_UPPER]:-$TOKEN_UPPER}

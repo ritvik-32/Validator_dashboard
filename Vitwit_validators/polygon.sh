@@ -35,12 +35,13 @@ TOTAL_REWARDS=$(awk "BEGIN {print $TOTAL_REWARDS_WEI / 1e18}")
 
 
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO polygon_data (validator_addr, self_delegations, external_delegations, rewards)
+INSERT INTO polygon_data (validator_addr, self_delegations, external_delegations, rewards, price)
 VALUES (
   '0xae09a7bcbcff2fd81f98f90eda73bd80b6883741',
   '$SELF_STAKE $AMOUNT_VALUE',
   '$EXTERNAL_STAKE $AMOUNT_VALUE',
-  '$TOTAL_REWARDS $AMOUNT_VALUE'
+  '$TOTAL_REWARDS $AMOUNT_VALUE',
+  $TOKEN_PRICE
 );
 "
 
