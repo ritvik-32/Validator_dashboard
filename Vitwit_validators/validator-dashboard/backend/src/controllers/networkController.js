@@ -10,14 +10,22 @@ const networks = [
 const ALL_NETWORKS = 'all';
 
 const getTimeRange = (range) => {
-  const now = moment();
+  // Use local timezone (IST)
+  const now = moment().utcOffset('+05:30');
+  
   switch (range) {
-    case '1d': return now.subtract(1, 'days').toDate();
-    case '7d': return now.subtract(7, 'days').toDate();
-    case '1m': return now.subtract(1, 'months').toDate();
-    case '3m': return now.subtract(3, 'months').toDate();
-    case '6m': return now.subtract(6, 'months').toDate();
-    default: return now.subtract(7, 'days').toDate();
+    case '1d': 
+      return now.clone().subtract(1, 'days').startOf('day').toDate();
+    case '7d': 
+      return now.clone().subtract(7, 'days').startOf('day').toDate();
+    case '30d':
+      return now.clone().subtract(30, 'days').startOf('day').toDate();
+    case '3m':
+      return now.clone().subtract(3, 'months').startOf('day').toDate();
+    case '6m':
+      return now.clone().subtract(6, 'months').startOf('day').toDate();
+    default: 
+      return now.clone().subtract(7, 'days').startOf('day').toDate();
   }
 };
 

@@ -49,9 +49,9 @@ SELF_DELEGATIONS=$(echo "$SELF_RAW" | jq -r \
 EXTERNAL_DELEGATIONS=$(awk "BEGIN {print $OVERALL_DELEGATIONS - $SELF_DELEGATIONS}")
 
 # Fetch rewards for the given denom
-OUTSTANDING_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/validators/$VALIDATOR/outstanding_rewards") 
-OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewards.rewards[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
-OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
+# OUTSTANDING_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/validators/$VALIDATOR/outstanding_rewards") 
+# OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewards.rewards[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
+# OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 # Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO nomic_data (validator_addr, self_delegations, external_delegations, rewards)
@@ -59,7 +59,7 @@ VALUES (
   '$VALIDATOR',
   '$SELF_DELEGATIONS $AMOUNT_VALUE',
   '$EXTERNAL_DELEGATIONS $AMOUNT_VALUE',
-  '$OUTSTANDING_TOTAL $AMOUNT_VALUE'
+  '0 $AMOUNT_VALUE'
 );
 "
 
