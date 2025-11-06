@@ -409,26 +409,42 @@ function App() {
     Chart.register(...registerables);
   }, []);
 
-  // Network token prices (in USD)
-  const tokenPrices = {
-    'avail': 0.00906833,
-    'cosmos': 2.99,
-    'regen': 0.00973236,
-    'namada': 0.0098712,
-    'mantra': 0.108471,
-    'agoric': 0.01003554,
-    'osmosis': 0.112654,
-    'passage': 0.00098393,
-    'akash': 0.715603,
-    'cheqd': 0.01724347,
-    'polygon': 0.187404,
-    // Add other networks with their respective prices
-  };
+  // Robust converter: accepts raw value ("123 ATOM" or numeric), row-level price, and network
+  // - If rowPrice is provided, use it
+  // - If rawValue already looks like a USD string (e.g. "123.45 USD"), parse and return directly
+  // - Otherwise return 0 (no fallback to hardcoded prices)
+  const amountToUSD = (rawValue, network, rowPrice) => {
+    if (rawValue === null || rawValue === undefined) return 0;
 
-  // Helper function to convert token amount to USD
-  const toUSD = (amount, network) => {
-    const price = tokenPrices[network.toLowerCase()] || 1; // Default to 1 if price not found
-    return parseFloat(amount) * price;
+    // If rawValue is already a number, treat it as token amount
+    let amount = 0;
+    if (typeof rawValue === 'number') {
+      amount = rawValue;
+    } else if (typeof rawValue === 'string') {
+      const trimmed = rawValue.trim();
+      // If it contains 'USD' assume it's already USD
+      if (/\bUSD\b/i.test(trimmed)) {
+        const num = parseFloat(trimmed.split(/\s+/)[0]);
+        return isNaN(num) ? 0 : num;
+      }
+      // Otherwise treat as token amount like "123.45 ATOM" or just a number string
+      const parts = trimmed.split(/\s+/);
+      amount = parseFloat(parts[0]) || 0;
+    } else {
+      return 0;
+    }
+
+    // IMPORTANT: do NOT fall back to any hardcoded price here.
+    // Use only the per-row price when available. If no rowPrice is provided, return 0
+    // so the UI reflects only DB-derived USD values.
+    if (rowPrice === undefined || rowPrice === null || rowPrice === 0 || String(rowPrice).trim() === '') {
+      return 0;
+    }
+
+    const parsedPrice = parseFloat(rowPrice);
+    if (isNaN(parsedPrice) || parsedPrice === 0) return 0;
+
+    return parseFloat(amount) * parsedPrice;
   };
 
   // Process data for self-delegation chart
@@ -440,15 +456,16 @@ function App() {
     ];
     
     Object.entries(allNetworksData).forEach(([network, data], index) => {
-      if (!data.length) return;
+      // Skip NOMIC network
+      if (network.toLowerCase() === 'nomic' || !data.length) return;
       
       datasets.push({
         label: network.charAt(0).toUpperCase() + network.slice(1),
         data: data.map(d => {
-          const amount = parseFloat((d.self_delegations || '0').split(' ')[0]) || 0;
+          // Use row price if available, or parse USD string; no fallback to hardcoded prices
           return {
             x: new Date(d.timestamp),
-            y: toUSD(amount, network)
+            y: amountToUSD(d.self_delegations, network, d.price)
           };
         }),
         borderColor: colors[index % colors.length],
@@ -480,17 +497,15 @@ function App() {
     ];
     
     Object.entries(allNetworksData).forEach(([network, data], index) => {
-      if (!data.length) return;
+      // Skip NOMIC network
+      if (network.toLowerCase() === 'nomic' || !data.length) return;
       
       datasets.push({
         label: network.charAt(0).toUpperCase() + network.slice(1),
-        data: data.map(d => {
-          const amount = parseFloat((d.external_delegations || '0').split(' ')[0]) || 0;
-          return {
-            x: new Date(d.timestamp),
-            y: toUSD(amount, network)
-          };
-        }),
+        data: data.map(d => ({
+          x: new Date(d.timestamp),
+          y: amountToUSD(d.external_delegations, network, d.price)
+        })),
         borderColor: colors[index % colors.length],
         backgroundColor: 'transparent',
         borderWidth: 2,
