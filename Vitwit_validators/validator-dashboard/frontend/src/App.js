@@ -843,7 +843,7 @@ function App() {
                   <EmojiEventsIcon />
                 </StatIcon>
                 <Box ml={2}>
-                  <StatLabel>Total Network Rewards</StatLabel>
+                  <StatLabel>Total Pending Rewards</StatLabel>
                   <StatValue variant="h5">
                     {isLoading.validators ? (
                       <Skeleton width={100} animation="wave" />
