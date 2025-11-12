@@ -660,6 +660,29 @@ function App() {
     ]
   }), [data, theme]);
 
+  // Separate dataset for total_rewards history (per-network table field)
+  const totalRewardsChartData = useMemo(() => ({
+    labels: data.map(d => d.timestamp && new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+    datasets: [
+      {
+        label: 'Total Rewards',
+        data: data.map(d => parseFloat((d.total_rewards || '0').split(' ')[0]) || 0),
+        fill: true,
+        backgroundColor: alpha(theme.palette.info.main, 0.08),
+        borderColor: theme.palette.info.main,
+        borderWidth: 2,
+        pointBackgroundColor: theme.palette.background.paper,
+        pointBorderColor: theme.palette.info.main,
+        pointHoverRadius: 6,
+        pointHoverBackgroundColor: theme.palette.info.main,
+        pointHoverBorderColor: theme.palette.background.paper,
+        pointHitRadius: 10,
+        pointBorderWidth: 2,
+        tension: 0.3,
+      }
+    ]
+  }), [data, theme]);
+
   const handleNetworkChange = (event) => {
     setSelectedNetwork(event.target.value);
   };
@@ -789,7 +812,7 @@ function App() {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -812,7 +835,7 @@ function App() {
             </CardContent>
           </StatCard>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+  <Grid item xs={12} sm={6} md={3}>
           <StatCard>
             <CardContent>
               <Box display="flex" alignItems="center" mb={2}>
@@ -835,7 +858,7 @@ function App() {
             </CardContent>
           </StatCard>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+  <Grid item xs={12} sm={6} md={3}>
           <StatCard>
             <CardContent>
               <Box display="flex" alignItems="center" mb={2}>
@@ -858,6 +881,31 @@ function App() {
             </CardContent>
           </StatCard>
         </Grid>
+        {selectedNetwork !== 'all' && (
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard>
+              <CardContent>
+                <Box display="flex" alignItems="center" mb={2}>
+                  <StatIcon color="success">
+                    <EmojiEventsIcon />
+                  </StatIcon>
+                  <Box ml={2}>
+                    <StatLabel>Total Rewards</StatLabel>
+                    <StatValue variant="h5">
+                      {isLoading.chart ? (
+                        <Skeleton width={100} animation="wave" />
+                      ) : latest?.total_rewards ? (
+                        formatNumber(latest.total_rewards)
+                      ) : (
+                        'N/A'
+                      )}
+                    </StatValue>
+                  </Box>
+                </Box>
+              </CardContent>
+            </StatCard>
+          </Grid>
+        )}
       </Grid>
 
       {/* Chart */}
@@ -908,6 +956,57 @@ function App() {
           </StyledPaper>
         </Grid>
       </Grid>
+
+      {/* Total Rewards History chart (per-network total_rewards) - only for individual networks, not 'all' */}
+      {selectedNetwork !== 'all' && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <StyledPaper>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                  Total Rewards History
+                </Typography>
+                {lastUpdated && (
+                  <Typography variant="caption" color="text.secondary">
+                    Updated: {new Date(lastUpdated).toLocaleString()}
+                  </Typography>
+                )}
+              </Box>
+              <ChartContainer>
+                {isLoading.chart ? (
+                  <LoadingOverlay>
+                    <CircularProgress size={24} sx={{ mr: 1 }} />
+                    <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
+                  </LoadingOverlay>
+                ) : data.length === 0 ? (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    height: '100%',
+                    color: 'text.secondary',
+                    p: 3,
+                    textAlign: 'center'
+                  }}>
+                    <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+                    <Typography variant="body1" gutterBottom>No data available</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Select a different time range or check back later for updates.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Line 
+                    data={totalRewardsChartData} 
+                    options={chartOptions(theme)} 
+                    height={400}
+                  />
+                )}
+              </ChartContainer>
+            </StyledPaper>
+          </Grid>
+        </Grid>
+      )}
 
       {/* Self Delegation Across All Networks */}
       {selectedNetwork === 'all' && (

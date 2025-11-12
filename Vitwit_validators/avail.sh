@@ -7,6 +7,8 @@ AMOUNT_VALUE="AVAIL"
 PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
+YESTERDAY=$(date -u -d "yesterday" +"%Y-%m-%d")
+
 
 fetch_avail_price() {
     local price_data
@@ -31,21 +33,29 @@ STAKE_RAW=$(curl -s -X POST "$VAL_ENDPOINT" \
 SELF_STAKE=$(echo "$STAKE_RAW" | jq -r ".data.info.bonded_owner | tonumber / $DENOM_DIV")
 EXTERNAL_STAKE=$(echo "$STAKE_RAW" | jq -r ".data.info.bonded_nominators | tonumber / $DENOM_DIV")
 
-### ✅ Fetch Total Rewards
+
 REWARD_RAW=$(curl -s -X POST "$REWARD_ENDPOINT" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
-  -d "{\"address\": \"$VALIDATOR\"}")
+  -d "{
+    \"address\": \"$VALIDATOR\",
+    \"start\": \"$YESTERDAY\",
+    \"end\": \"$YESTERDAY\"
+  }")
+TOTAL_REWARDS=$(echo "$REWARD_RAW" | jq -r ".data.sum | tonumber / $DENOM_DIV")
 
-REWARDS=$(echo "$REWARD_RAW" | jq -r ".data.sum | tonumber / $DENOM_DIV")
 
+
+
+###############################################################################
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO avail_data (validator_addr, self_delegations, external_delegations, rewards, price)
+INSERT INTO avail_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',
   '$SELF_STAKE $AMOUNT_VALUE',
   '$EXTERNAL_STAKE $AMOUNT_VALUE',
-  '$REWARDS $AMOUNT_VALUE',
+  '0 $AMOUNT_VALUE',
+  '$TOTAL_REWARDS $AMOUNT_VALUE',
   '$TOKEN_PRICE'
 );
 "

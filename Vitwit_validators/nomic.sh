@@ -54,11 +54,12 @@ EXTERNAL_DELEGATIONS=$(awk "BEGIN {print $OVERALL_DELEGATIONS - $SELF_DELEGATION
 # OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 # Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO nomic_data (validator_addr, self_delegations, external_delegations, rewards)
+INSERT INTO nomic_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards)
 VALUES (
   '$VALIDATOR',
   '$SELF_DELEGATIONS $AMOUNT_VALUE',
   '$EXTERNAL_DELEGATIONS $AMOUNT_VALUE',
+  '0 $AMOUNT_VALUE',
   '0 $AMOUNT_VALUE'
 );
 "

@@ -58,12 +58,13 @@ REWARDS=$(echo "$REWARD_RAW" | jq -r '.[0].minDenomAmount | tonumber')
 REWARDS_DIV=$(awk "BEGIN {print $REWARDS / 1000000}")
 
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO namada_data (validator_addr, self_delegations, external_delegations, rewards, price)
+INSERT INTO namada_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',
   '$SELF_STAKE $AMOUNT_VALUE',
   '$EXTERNAL_STAKE $AMOUNT_VALUE',
   '$REWARDS_DIV $AMOUNT_VALUE',
+  '0 $AMOUNT_VALUE',
   $TOKEN_PRICE
 );
 "

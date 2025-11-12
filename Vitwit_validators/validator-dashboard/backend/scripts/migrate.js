@@ -2,7 +2,7 @@ const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
 const networks = [
-  'cosmos', 'polygon', 'avail', 'ika', 'cheqd', 'stride',
+  'cosmos', 'polygon', 'avail', 'ika', 'cheqd',
   'passage', 'mantra', 'namada', 'osmosis', 'agoric', 'nomic', 'regen', 'akash'
 ];
 
@@ -34,6 +34,7 @@ async function createTables() {
           self_delegations VARCHAR(255) NOT NULL,
           external_delegations VARCHAR(255) NOT NULL,
           rewards VARCHAR(255) NOT NULL,
+          total_rewards VARCHAR(255),
           price NUMERIC(20, 10),
           timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
