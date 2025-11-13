@@ -7,7 +7,7 @@ AMOUNT_VALUE="AVAIL"
 PGUSER="postgres"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
-YESTERDAY=$(date -u -d "yesterday" +"%Y-%m-%d")
+START_DATE=$(date -u +"%Y-%m-%d")
 
 
 fetch_avail_price() {
@@ -39,8 +39,8 @@ REWARD_RAW=$(curl -s -X POST "$REWARD_ENDPOINT" \
   -H "X-API-Key: $API_KEY" \
   -d "{
     \"address\": \"$VALIDATOR\",
-    \"start\": \"$YESTERDAY\",
-    \"end\": \"$YESTERDAY\"
+    \"start\": \"$START_DATE\",
+    \"end\": \"$START_DATE\"
   }")
 TOTAL_REWARDS=$(echo "$REWARD_RAW" | jq -r ".data.sum | tonumber / $DENOM_DIV")
 

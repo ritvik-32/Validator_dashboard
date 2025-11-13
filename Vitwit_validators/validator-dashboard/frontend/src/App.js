@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import moment from 'moment';
 import axios from 'axios';
 import { Chart, registerables } from 'chart.js';
 import { Chart as ChartJS } from 'chart.js';
@@ -31,6 +32,7 @@ import {
   Button
 } from '@mui/material';
 import { Line } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
 import 'chart.js/auto';
 import { styled } from '@mui/material/styles';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -182,7 +184,7 @@ const StatLabel = styled(Typography)(({ theme }) => ({
   fontWeight: 500,
 }));
 
-const NETWORKS_API = 'http://localhost:5000/api/networks';
+const NETWORKS_API = 'http://139.59.7.152:5000/api/networks';
 
 const TIME_RANGES = [
   { label: '7 Days', value: '7d' },
@@ -357,7 +359,9 @@ function App() {
   const theme = useTheme();
   const [networks, setNetworks] = useState([]);
   const [selectedNetwork, setSelectedNetwork] = useState('cosmos');
-  const [range, setRange] = useState('7d');
+  const [range, setRange] = useState('30d');
+  // Use backend-supported range tokens for the monthly chart by default (30 days)
+  const [monthlyChartRange, setMonthlyChartRange] = useState('30d');
   const [data, setData] = useState([]);
   const [latest, setLatest] = useState(null);
   const [validatorList, setValidatorList] = useState([]);
@@ -369,6 +373,7 @@ function App() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [allNetworksData, setAllNetworksData] = useState({});
   const [isLoadingAllNetworks, setIsLoadingAllNetworks] = useState(true);
+  const [monthlyChartData, setMonthlyChartData] = useState([]);
 
   // Fetch data for all networks
   const fetchAllNetworksData = async () => {
@@ -526,6 +531,107 @@ function App() {
     };
   }, [allNetworksData]);
 
+  // Calculate monthly rewards for bar chart
+  // Use UTC-aligned grouping to avoid client timezone shifts when DB timestamps are in UTC
+  const monthlyRewardsData = useMemo(() => {
+    if (!monthlyChartData.length || !selectedNetwork || selectedNetwork === 'all') {
+      return { labels: [], datasets: [], tokenSymbol: '' };
+    }
+
+    // Debug: print how many rows we received for the monthly chart and sample timestamps
+    try {
+      console.log(`[${selectedNetwork}] monthlyChartData count: ${monthlyChartData.length}`,
+        'first 5 timestamps:', monthlyChartData.slice(0, 5).map(r => r.timestamp),
+        'last timestamp:', monthlyChartData[monthlyChartData.length - 1]?.timestamp);
+    } catch (e) {
+      // ignore logging errors
+    }
+
+    // Group data by month (YYYY-MM format) using UTC to match DB timestamps
+    const monthlyGrouped = {};
+    let tokenSymbol = '';
+
+    monthlyChartData.forEach(row => {
+      if (!row.total_rewards) return;
+      const m = moment(row.timestamp).utc();
+      const monthKey = `${m.year()}-${String(m.month() + 1).padStart(2, '0')}`;
+
+      if (!monthlyGrouped[monthKey]) {
+        monthlyGrouped[monthKey] = [];
+      }
+      monthlyGrouped[monthKey].push(row);
+
+      // Extract token symbol from total_rewards (e.g., "123 ATOM" -> "ATOM")
+      if (!tokenSymbol && row.total_rewards) {
+        const parts = row.total_rewards.split(' ');
+        if (parts.length > 1) {
+          tokenSymbol = parts[1];
+        }
+      }
+    });
+
+    // Calculate rewards delta or cumulative
+    const monthlyValues = [];
+    const monthlyLabels = [];
+    const isAvail = selectedNetwork.toLowerCase() === 'avail';
+
+    // Helper: parse numeric portion safely (remove commas)
+    const parseAmount = (s) => parseFloat((s || '0').toString().replace(/,/g, '').split(' ')[0]) || 0;
+
+    // Get sorted month keys for iteration
+    const sortedMonths = Object.keys(monthlyGrouped).sort();
+
+    sortedMonths.forEach((monthKey, index) => {
+      const entries = monthlyGrouped[monthKey];
+      // Sort entries by timestamp (use moment UTC for consistent parsing)
+      entries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
+      
+      let monthlyReward = 0;
+
+      if (isAvail) {
+        // For Avail: cumulative sum of all total_rewards in that month
+        monthlyReward = entries.reduce((sum, entry) => {
+          const amount = parseAmount(entry.total_rewards);
+          return sum + amount;
+        }, 0);
+      } else {
+        // For others: last entry of current month - last entry of previous month
+        // This gives true monthly earnings for cumulative total_rewards fields
+        const lastRewardCurrentMonth = parseAmount(entries[entries.length - 1].total_rewards);
+        
+        let lastRewardPreviousMonth = 0;
+        if (index > 0) {
+          // Get last entry of previous month
+          const prevMonthKey = sortedMonths[index - 1];
+          const prevMonthEntries = monthlyGrouped[prevMonthKey];
+          prevMonthEntries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
+          lastRewardPreviousMonth = parseAmount(prevMonthEntries[prevMonthEntries.length - 1].total_rewards);
+        } else {
+          // First month: use first entry as baseline (no previous month data)
+          lastRewardPreviousMonth = parseAmount(entries[0].total_rewards);
+        }
+        
+        monthlyReward = lastRewardCurrentMonth - lastRewardPreviousMonth;
+        console.log(`[${selectedNetwork}] Month: ${monthKey}, PrevMonthLast: ${lastRewardPreviousMonth}, CurrentMonthLast: ${lastRewardCurrentMonth}, Delta: ${monthlyReward}, Entries: ${entries.length}`);
+      }
+
+      monthlyLabels.push(monthKey);
+      monthlyValues.push(Math.max(0, monthlyReward));
+    });    return {
+      labels: monthlyLabels,
+      datasets: [
+        {
+          label: `Monthly Rewards${isAvail ? ' (Cumulative)' : ' (Delta)'} ${tokenSymbol}`,
+          data: monthlyValues,
+          backgroundColor: theme.palette.primary.main,
+          borderColor: theme.palette.primary.dark,
+          borderWidth: 1,
+        }
+      ]
+    };
+  }, [monthlyChartData, selectedNetwork, theme]);
+
+
   const fetchNetworks = async () => {
     try {
       const res = await axios.get(NETWORKS_API);
@@ -570,6 +676,26 @@ function App() {
     }
   };
 
+  const fetchMonthlyChartData = async () => {
+    if (!selectedNetwork) return;
+    try {
+      // Map friendly monthlyChartRange tokens to calendar-aligned "since" date
+      const mapToMonths = {
+        '30d': 1,
+        '3m': 3,
+        '6m': 6,
+        '1y': 12,
+      };
+      const months = mapToMonths[monthlyChartRange] || 1;
+  // Start from the first day of (current month - (months - 1)) using UTC-aligned month boundaries
+  const since = moment().utc().startOf('month').subtract(months - 1, 'months').toISOString();
+      const res = await axios.get(`${NETWORKS_API}/${selectedNetwork}/history?since=${encodeURIComponent(since)}`);
+      setMonthlyChartData(res.data || []);
+    } catch (err) {
+      console.error('Failed to fetch monthly chart data:', err);
+    }
+  };
+
   const handleRefresh = () => {
     fetchNetworks();
     fetchValidatorList();
@@ -587,6 +713,12 @@ function App() {
     }
     fetchAllNetworksData();
   }, [selectedNetwork, range]);
+
+  useEffect(() => {
+    if (selectedNetwork) {
+      fetchMonthlyChartData();
+    }
+  }, [selectedNetwork, monthlyChartRange]);
 
   // Get validator with highest self-delegation
   const topValidator = useMemo(() => {
@@ -999,6 +1131,144 @@ function App() {
                   <Line 
                     data={totalRewardsChartData} 
                     options={chartOptions(theme)} 
+                    height={400}
+                  />
+                )}
+              </ChartContainer>
+            </StyledPaper>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Monthly Rewards Bar Chart (per-network) - only for individual networks, not 'all' */}
+      {selectedNetwork !== 'all' && selectedNetwork !== 'namada' && selectedNetwork !== 'nomic' && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <StyledPaper>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                    Monthly Rewards {selectedNetwork?.toLowerCase() === 'avail' ? '(Cumulative)' : '(Delta)'}
+                  </Typography>
+                  <FormControl sx={{ minWidth: 150 }} size="small">
+                    <InputLabel>Time Period</InputLabel>
+                    <Select
+                      value={monthlyChartRange}
+                      label="Time Period"
+                      onChange={(e) => setMonthlyChartRange(e.target.value)}
+                    >
+                      <MenuItem value="30d">1 Month</MenuItem>
+                      <MenuItem value="3m">3 Months</MenuItem>
+                      <MenuItem value="6m">6 Months</MenuItem>
+                      <MenuItem value="1y">1 Year</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+                {lastUpdated && (
+                  <Typography variant="caption" color="text.secondary">
+                    Updated: {new Date(lastUpdated).toLocaleString()}
+                  </Typography>
+                )}
+              </Box>
+              <ChartContainer>
+                {isLoading.chart ? (
+                  <LoadingOverlay>
+                    <CircularProgress size={24} sx={{ mr: 1 }} />
+                    <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
+                  </LoadingOverlay>
+                ) : monthlyRewardsData.labels.length === 0 ? (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    height: '100%',
+                    color: 'text.secondary',
+                    p: 3,
+                    textAlign: 'center'
+                  }}>
+                    <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+                    <Typography variant="body1" gutterBottom>No data available</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Not enough data to calculate monthly rewards.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Bar 
+                    data={monthlyRewardsData} 
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      indexAxis: 'x',
+                      plugins: {
+                        legend: {
+                          position: 'top',
+                          labels: {
+                            usePointStyle: true,
+                            padding: 20,
+                            color: theme.palette.text.secondary,
+                            font: {
+                              family: theme.typography.fontFamily,
+                              size: 13,
+                            },
+                          },
+                        },
+                        tooltip: {
+                          backgroundColor: theme.palette.background.paper,
+                          titleColor: theme.palette.text.primary,
+                          bodyColor: theme.palette.text.secondary,
+                          borderColor: theme.palette.divider,
+                          borderWidth: 1,
+                          padding: 16,
+                          boxShadow: theme.shadows[3],
+                          titleFont: {
+                            weight: 600,
+                            size: 14,
+                            family: theme.typography.fontFamily,
+                          },
+                          bodyFont: {
+                            size: 13,
+                            family: theme.typography.fontFamily,
+                          },
+                          callbacks: {
+                            label: function(context) {
+                              return `${context.dataset.label}: ${formatNumber(context.parsed.y)}`;
+                            }
+                          }
+                        }
+                      },
+                      scales: {
+                        x: {
+                          grid: {
+                            display: false,
+                            drawBorder: false,
+                          },
+                          ticks: {
+                            color: theme.palette.text.secondary,
+                            font: {
+                              size: 12,
+                            },
+                          },
+                        },
+                        y: {
+                          grid: {
+                            borderDash: [3, 3],
+                            drawBorder: false,
+                            color: theme.palette.divider,
+                          },
+                          ticks: {
+                            padding: 10,
+                            color: theme.palette.text.secondary,
+                            font: {
+                              size: 12,
+                            },
+                            callback: function(value) {
+                              return formatNumber(value);
+                            }
+                          }
+                        }
+                      }
+                    }}
                     height={400}
                   />
                 )}

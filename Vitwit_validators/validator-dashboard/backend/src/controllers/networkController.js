@@ -24,6 +24,8 @@ const getTimeRange = (range) => {
       return now.clone().subtract(3, 'months').startOf('day').toDate();
     case '6m':
       return now.clone().subtract(6, 'months').startOf('day').toDate();
+    case '1y':
+      return now.clone().subtract(1, 'years').startOf('day').toDate();
     default: 
       return now.clone().subtract(7, 'days').startOf('day').toDate();
   }
@@ -64,8 +66,18 @@ exports.getNetworkData = async (req, res) => {
 
 exports.getNetworkDataHistory = async (req, res) => {
   const { network } = req.params;
-  const { range = '7d' } = req.query;
-  const since = getTimeRange(range);
+  const { range = '7d', since: sinceParam } = req.query;
+  let since;
+  if (sinceParam) {
+    // Use provided ISO timestamp if valid
+    const parsed = moment(sinceParam);
+    if (!parsed.isValid()) {
+      return res.status(400).json({ error: 'Invalid since timestamp' });
+    }
+    since = parsed.toDate();
+  } else {
+    since = getTimeRange(range);
+  }
   
   if (network === ALL_NETWORKS) {
     try {
