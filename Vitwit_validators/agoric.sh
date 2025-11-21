@@ -64,12 +64,28 @@ OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewar
 OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 
 # Calculate total rewards (delegator rewards + validator commission)
-DELEGATOR_REWARDS_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/delegators/$DELEGATOR/rewards")
-DELEGATOR_REWARDS=$(echo "$DELEGATOR_REWARDS_RAW" | jq -r ".total[0].amount | tonumber / 1000000")
+DELEGATOR_REWARDS_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/delegators/$DELEGATOR/rewards/$VALIDATOR")
+
+DELEGATOR_REWARDS=$(echo "$DELEGATOR_REWARDS_RAW" \
+    | jq -r --arg DEN "$DENOM" '
+        .rewards[]
+        | select(.denom == $DEN)
+        | .amount
+        | tonumber / 1000000
+    ')
+
 DELEGATOR_REWARDS=${DELEGATOR_REWARDS:-0}
 
+
 VALIDATOR_COMMISSION_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/validators/$VALIDATOR/commission")
-VALIDATOR_COMMISSION=$(echo "$VALIDATOR_COMMISSION_RAW" | jq -r ".commission.commission[0].amount | tonumber / 1000000")
+
+VALIDATOR_COMMISSION=$(echo "$VALIDATOR_COMMISSION_RAW" \
+    | jq -r --arg DEN "$DENOM" '
+        .commission.commission[]
+        | select(.denom == $DEN)
+        | .amount
+        | tonumber / 1000000
+    ')
 VALIDATOR_COMMISSION=${VALIDATOR_COMMISSION:-0}
 
 TOTAL_REWARDS=$(awk "BEGIN {print $DELEGATOR_REWARDS + $VALIDATOR_COMMISSION}")
@@ -78,7 +94,6 @@ echo "Delegator rewards: $DELEGATOR_REWARDS $AMOUNT_VALUE"
 echo "Validator commission: $VALIDATOR_COMMISSION $AMOUNT_VALUE"
 echo "Total rewards: $TOTAL_REWARDS $AMOUNT_VALUE"
 
-Insert new row into Postgres
 PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO agoric_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (

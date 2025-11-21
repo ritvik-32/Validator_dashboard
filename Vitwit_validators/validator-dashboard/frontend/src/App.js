@@ -1,8 +1,7 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import moment from 'moment';
 import axios from 'axios';
 import { Chart, registerables } from 'chart.js';
-import { Chart as ChartJS } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { 
   Container, 
@@ -26,14 +25,24 @@ import {
   alpha,
   Card,
   CardContent,
-  Divider,
   IconButton,
   Tooltip,
-  Button
+  Button,
+  TextField,
+  Alert,
+  Snackbar,
+  AppBar,
+  Toolbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  Chip
 } from '@mui/material';
-import { Line } from 'react-chartjs-2';
-import { Bar } from 'react-chartjs-2';
-import 'chart.js/auto';
+import { Line, Bar } from 'react-chartjs-2';
 import { styled } from '@mui/material/styles';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
@@ -41,8 +50,15 @@ import TimelineIcon from '@mui/icons-material/Timeline';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import PeopleIcon from '@mui/icons-material/People';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import LogoutIcon from '@mui/icons-material/Logout';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
-// Custom styled components
+// API Base URL
+const API_BASE = 'http://localhost:5000/api';
+
+// Styled Components
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
   borderRadius: 12,
@@ -69,26 +85,6 @@ const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
       letterSpacing: '0.5px',
       borderBottom: `1px solid ${theme.palette.divider}`
     }
-  },
-  '& .MuiTableRow-root': {
-    '&:nth-of-type(odd)': {
-      backgroundColor: alpha(theme.palette.primary.main, 0.01),
-    },
-    '&:last-child td': {
-      borderBottom: 0,
-    },
-    '&:hover': {
-      backgroundColor: alpha(theme.palette.primary.main, 0.03),
-    }
-  },
-  '& .MuiTableCell-body': {
-    color: theme.palette.text.primary,
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    padding: '12px 16px',
-    '&.highlight': {
-      fontWeight: 500,
-      color: theme.palette.primary.main,
-    }
   }
 }));
 
@@ -106,13 +102,6 @@ const StyledSelect = styled(Select)(({ theme }) => ({
   },
   '& .MuiSelect-select': {
     padding: '12px 32px 12px 16px',
-  },
-}));
-
-const StyledInputLabel = styled(InputLabel)(({ theme }) => ({
-  color: theme.palette.text.secondary,
-  '&.Mui-focused': {
-    color: theme.palette.primary.main,
   },
 }));
 
@@ -148,12 +137,6 @@ const StatCard = styled(Card)(({ theme }) => ({
   '&:hover': {
     transform: 'translateY(-4px)',
     boxShadow: '0 8px 32px 0 rgba(0,0,0,0.08)'
-  },
-  '& .MuiCardContent-root': {
-    padding: theme.spacing(3),
-    '&:last-child': {
-      paddingBottom: theme.spacing(3),
-    }
   }
 }));
 
@@ -184,7 +167,22 @@ const StatLabel = styled(Typography)(({ theme }) => ({
   fontWeight: 500,
 }));
 
-const NETWORKS_API = 'http://139.59.7.152:5000/api/networks';
+const LoginContainer = styled(Box)(({ theme }) => ({
+  minHeight: '100vh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+  padding: theme.spacing(2),
+}));
+
+const LoginPaper = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(4),
+  borderRadius: 16,
+  maxWidth: 450,
+  width: '100%',
+  boxShadow: '0 8px 32px 0 rgba(0,0,0,0.12)',
+}));
 
 const TIME_RANGES = [
   { label: '7 Days', value: '7d' },
@@ -194,26 +192,65 @@ const TIME_RANGES = [
   { label: '1 Year', value: '1y' }
 ];
 
-// Format numbers with proper formatting and preserve token symbols
+// Auth Helper Functions
+const getToken = () => localStorage.getItem('token');
+const getUser = () => {
+  const user = localStorage.getItem('user');
+  return user ? JSON.parse(user) : null;
+};
+const setAuth = (token, user) => {
+  localStorage.setItem('token', token);
+  localStorage.setItem('user', JSON.stringify(user));
+};
+const clearAuth = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+};
+
+// Axios instance with auth
+const createAxiosInstance = () => {
+  const instance = axios.create({
+    baseURL: API_BASE,
+  });
+
+  instance.interceptors.request.use((config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
+
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.status === 401) {
+        clearAuth();
+        window.location.reload();
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  return instance;
+};
+
+// Format numbers
 const formatNumber = (input) => {
   if (input === null || input === undefined) return '0';
   
-  // If input is a number, format it directly
   if (typeof input === 'number') {
     return new Intl.NumberFormat('en-US').format(input);
   }
   
-  // If input is a string, check if it contains a space (number + symbol)
   if (typeof input === 'string') {
     const parts = input.trim().split(/\s+/);
     if (parts.length === 0) return '0';
     
-    // Parse the number part
     const numberStr = parts[0];
     const number = parseFloat(numberStr);
-    if (isNaN(number)) return input; // Return original if not a valid number
+    if (isNaN(number)) return input;
     
-    // Format the number part
     let formattedNumber;
     if (Math.abs(number) >= 1000000) {
       formattedNumber = new Intl.NumberFormat('en-US', {
@@ -230,7 +267,6 @@ const formatNumber = (input) => {
       formattedNumber = new Intl.NumberFormat('en-US').format(number);
     }
     
-    // Add the symbol back if it exists
     return parts.length > 1 ? `${formattedNumber} ${parts.slice(1).join(' ')}` : formattedNumber;
   }
   
@@ -264,16 +300,6 @@ const chartOptions = (theme) => ({
       borderColor: theme.palette.divider,
       borderWidth: 1,
       padding: 16,
-      boxShadow: theme.shadows[3],
-      titleFont: {
-        weight: 600,
-        size: 14,
-        family: theme.typography.fontFamily,
-      },
-      bodyFont: {
-        size: 13,
-        family: theme.typography.fontFamily,
-      },
       callbacks: {
         label: function(context) {
           let label = context.dataset.label || '';
@@ -288,11 +314,6 @@ const chartOptions = (theme) => ({
       }
     },
   },
-  interaction: {
-    mode: 'nearest',
-    axis: 'x',
-    intersect: false,
-  },
   scales: {
     x: {
       grid: {
@@ -303,9 +324,6 @@ const chartOptions = (theme) => ({
         maxRotation: 0,
         padding: 10,
         color: theme.palette.text.secondary,
-        font: {
-          size: 12,
-        },
       },
     },
     y: {
@@ -317,9 +335,6 @@ const chartOptions = (theme) => ({
       ticks: {
         padding: 10,
         color: theme.palette.text.secondary,
-        font: {
-          size: 12,
-        },
         callback: function(value) {
           return formatNumber(value);
         },
@@ -340,27 +355,315 @@ const chartOptions = (theme) => ({
       borderWidth: 2,
     },
   },
-  layout: {
-    padding: {
-      top: 10,
-      right: 20,
-      bottom: 10,
-      left: 10,
-    },
-  },
-  animation: {
-    duration: 1000,
-  },
-  maintainAspectRatio: false,
-  aspectRatio: 2,
 });
 
-function App() {
+// Login Component
+function LoginPage({ onLogin }) {
   const theme = useTheme();
+  const [isRegister, setIsRegister] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const endpoint = isRegister ? '/auth/register' : '/auth/login';
+      const response = await axios.post(`${API_BASE}${endpoint}`, {
+        username,
+        password,
+      });
+
+      if (isRegister) {
+        setSuccess('Registration successful! Please wait for admin approval.');
+        setUsername('');
+        setPassword('');
+        setTimeout(() => setIsRegister(false), 2000);
+      } else {
+        setAuth(response.data.token, response.data.user);
+        onLogin();
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <LoginContainer>
+      <LoginPaper elevation={3}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
+          <Box
+            sx={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mb: 2,
+            }}
+          >
+            {isRegister ? (
+              <PersonAddIcon sx={{ fontSize: 32, color: theme.palette.primary.main }} />
+            ) : (
+              <LockOutlinedIcon sx={{ fontSize: 32, color: theme.palette.primary.main }} />
+            )}
+          </Box>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
+            {isRegister ? 'Create Account' : 'Welcome Back'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isRegister
+              ? 'Register for validator dashboard access'
+              : 'Sign in to your validator dashboard'}
+          </Typography>
+        </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        {success && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            {success}
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <TextField
+            fullWidth
+            label="Username"
+            variant="outlined"
+            margin="normal"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoFocus
+          />
+          <TextField
+            fullWidth
+            label="Password"
+            type="password"
+            variant="outlined"
+            margin="normal"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            size="large"
+            sx={{ mt: 3, mb: 2, py: 1.5, borderRadius: 2 }}
+            disabled={loading}
+          >
+            {loading ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : isRegister ? (
+              'Register'
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+
+          <Box sx={{ textAlign: 'center' }}>
+            <Button
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setError('');
+                setSuccess('');
+              }}
+              color="primary"
+            >
+              {isRegister
+                ? 'Already have an account? Sign in'
+                : "Don't have an account? Register"}
+            </Button>
+          </Box>
+        </form>
+
+        
+      </LoginPaper>
+    </LoginContainer>
+  );
+}
+
+// Admin Panel Component
+function AdminPanel({ open, onClose }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  const api = createAxiosInstance();
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/admin/users');
+      setUsers(response.data);
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to fetch users',
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      fetchUsers();
+    }
+  }, [open]);
+
+  const handleApprove = async (userId) => {
+    try {
+      await api.post(`/admin/users/${userId}/approve`);
+      setSnackbar({
+        open: true,
+        message: 'User approved successfully',
+        severity: 'success',
+      });
+      fetchUsers();
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to approve user',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleRevoke = async (userId) => {
+    try {
+      await api.post(`/admin/users/${userId}/revoke`);
+      setSnackbar({
+        open: true,
+        message: 'User access revoked',
+        severity: 'success',
+      });
+      fetchUsers();
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to revoke user access',
+        severity: 'error',
+      });
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center">
+            <AdminPanelSettingsIcon sx={{ mr: 1 }} />
+            User Management
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {loading ? (
+            <Box display="flex" justifyContent="center" p={3}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <List>
+              {users.map((user) => (
+                <ListItem
+                  key={user.id}
+                  sx={{
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    mb: 1,
+                  }}
+                >
+                  <ListItemText
+                    primary={
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Typography variant="subtitle1">{user.username}</Typography>
+                        <Chip
+                          label={user.role}
+                          size="small"
+                          color={user.role === 'admin' ? 'primary' : 'default'}
+                        />
+                        {user.approved ? (
+                          <Chip label="Approved" size="small" color="success" />
+                        ) : (
+                          <Chip label="Pending" size="small" color="warning" />
+                        )}
+                      </Box>
+                    }
+                    secondary={`Created: ${new Date(user.createdAt).toLocaleDateString()}`}
+                  />
+                  <Box>
+                    {!user.approved && user.role !== 'admin' && (
+                      <Button
+                        variant="contained"
+                        color="success"
+                        size="small"
+                        onClick={() => handleApprove(user.id)}
+                        sx={{ mr: 1 }}
+                      >
+                        Approve
+                      </Button>
+                    )}
+                    {user.approved && user.role !== 'admin' && (
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={() => handleRevoke(user.id)}
+                      >
+                        Revoke
+                      </Button>
+                    )}
+                  </Box>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
+      </Snackbar>
+    </>
+  );
+}
+
+// Main Dashboard Component
+function Dashboard() {
+  const theme = useTheme();
+  const api = createAxiosInstance();
+  const user = getUser();
+
   const [networks, setNetworks] = useState([]);
   const [selectedNetwork, setSelectedNetwork] = useState('cosmos');
   const [range, setRange] = useState('30d');
-  // Use backend-supported range tokens for the monthly chart by default (30 days)
   const [monthlyChartRange, setMonthlyChartRange] = useState('30d');
   const [data, setData] = useState([]);
   const [latest, setLatest] = useState(null);
@@ -374,8 +677,13 @@ function App() {
   const [allNetworksData, setAllNetworksData] = useState({});
   const [isLoadingAllNetworks, setIsLoadingAllNetworks] = useState(true);
   const [monthlyChartData, setMonthlyChartData] = useState([]);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
 
-  // Fetch data for all networks
+  const handleLogout = () => {
+    clearAuth();
+    window.location.reload();
+  };
+
   const fetchAllNetworksData = async () => {
     if (!networks.length) return;
     
@@ -383,10 +691,9 @@ function App() {
     const allData = {};
     
     try {
-      // Fetch data for each network in parallel
       const networkPromises = networks.map(async (network) => {
         try {
-          const res = await axios.get(`${NETWORKS_API}/${network}/history?range=${range}`);
+          const res = await api.get(`/networks/${network}/history?range=${range}`);
           return { network, data: res.data || [] };
         } catch (err) {
           console.error(`Failed to fetch data for ${network}:`, err);
@@ -395,8 +702,6 @@ function App() {
       });
       
       const results = await Promise.all(networkPromises);
-      
-      // Convert array of results to object with network names as keys
       results.forEach(({ network, data }) => {
         allData[network] = data;
       });
@@ -409,39 +714,28 @@ function App() {
     }
   };
 
-  // Register chart components
   useEffect(() => {
     Chart.register(...registerables);
   }, []);
 
-  // Robust converter: accepts raw value ("123 ATOM" or numeric), row-level price, and network
-  // - If rowPrice is provided, use it
-  // - If rawValue already looks like a USD string (e.g. "123.45 USD"), parse and return directly
-  // - Otherwise return 0 (no fallback to hardcoded prices)
   const amountToUSD = (rawValue, network, rowPrice) => {
     if (rawValue === null || rawValue === undefined) return 0;
 
-    // If rawValue is already a number, treat it as token amount
     let amount = 0;
     if (typeof rawValue === 'number') {
       amount = rawValue;
     } else if (typeof rawValue === 'string') {
       const trimmed = rawValue.trim();
-      // If it contains 'USD' assume it's already USD
       if (/\bUSD\b/i.test(trimmed)) {
         const num = parseFloat(trimmed.split(/\s+/)[0]);
         return isNaN(num) ? 0 : num;
       }
-      // Otherwise treat as token amount like "123.45 ATOM" or just a number string
       const parts = trimmed.split(/\s+/);
       amount = parseFloat(parts[0]) || 0;
     } else {
       return 0;
     }
 
-    // IMPORTANT: do NOT fall back to any hardcoded price here.
-    // Use only the per-row price when available. If no rowPrice is provided, return 0
-    // so the UI reflects only DB-derived USD values.
     if (rowPrice === undefined || rowPrice === null || rowPrice === 0 || String(rowPrice).trim() === '') {
       return 0;
     }
@@ -452,7 +746,6 @@ function App() {
     return parseFloat(amount) * parsedPrice;
   };
 
-  // Process data for self-delegation chart
   const processSelfDelegationData = useMemo(() => {
     const datasets = [];
     const colors = [
@@ -461,39 +754,26 @@ function App() {
     ];
     
     Object.entries(allNetworksData).forEach(([network, data], index) => {
-      // Skip NOMIC network
       if (network.toLowerCase() === 'nomic' || !data.length) return;
       
       datasets.push({
         label: network.charAt(0).toUpperCase() + network.slice(1),
-        data: data.map(d => {
-          // Use row price if available, or parse USD string; no fallback to hardcoded prices
-          return {
-            x: new Date(d.timestamp),
-            y: amountToUSD(d.self_delegations, network, d.price)
-          };
-        }),
+        data: data.map(d => ({
+          x: new Date(d.timestamp),
+          y: amountToUSD(d.self_delegations, network, d.price)
+        })),
         borderColor: colors[index % colors.length],
         backgroundColor: 'transparent',
         borderWidth: 2,
         tension: 0.4,
         pointRadius: 0,
         pointHoverRadius: 6,
-        pointHoverBorderWidth: 2,
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: colors[index % colors.length],
-        borderJoinStyle: 'round',
-        borderCapStyle: 'round',
-        fill: false
       });
     });
     
-    return {
-      datasets
-    };
+    return { datasets };
   }, [allNetworksData]);
 
-  // Process data for external delegation chart
   const processExternalDelegationData = useMemo(() => {
     const datasets = [];
     const colors = [
@@ -502,7 +782,6 @@ function App() {
     ];
     
     Object.entries(allNetworksData).forEach(([network, data], index) => {
-      // Skip NOMIC network
       if (network.toLowerCase() === 'nomic' || !data.length) return;
       
       datasets.push({
@@ -517,37 +796,17 @@ function App() {
         tension: 0.4,
         pointRadius: 0,
         pointHoverRadius: 6,
-        pointHoverBorderWidth: 2,
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: colors[index % colors.length],
-        borderJoinStyle: 'round',
-        borderCapStyle: 'round',
-        fill: false
       });
     });
     
-    return {
-      datasets
-    };
+    return { datasets };
   }, [allNetworksData]);
 
-  // Calculate monthly rewards for bar chart
-  // Use UTC-aligned grouping to avoid client timezone shifts when DB timestamps are in UTC
   const monthlyRewardsData = useMemo(() => {
     if (!monthlyChartData.length || !selectedNetwork || selectedNetwork === 'all') {
       return { labels: [], datasets: [], tokenSymbol: '' };
     }
 
-    // Debug: print how many rows we received for the monthly chart and sample timestamps
-    try {
-      console.log(`[${selectedNetwork}] monthlyChartData count: ${monthlyChartData.length}`,
-        'first 5 timestamps:', monthlyChartData.slice(0, 5).map(r => r.timestamp),
-        'last timestamp:', monthlyChartData[monthlyChartData.length - 1]?.timestamp);
-    } catch (e) {
-      // ignore logging errors
-    }
-
-    // Group data by month (YYYY-MM format) using UTC to match DB timestamps
     const monthlyGrouped = {};
     let tokenSymbol = '';
 
@@ -561,7 +820,6 @@ function App() {
       }
       monthlyGrouped[monthKey].push(row);
 
-      // Extract token symbol from total_rewards (e.g., "123 ATOM" -> "ATOM")
       if (!tokenSymbol && row.total_rewards) {
         const parts = row.total_rewards.split(' ');
         if (parts.length > 1) {
@@ -570,54 +828,45 @@ function App() {
       }
     });
 
-    // Calculate rewards delta or cumulative
     const monthlyValues = [];
     const monthlyLabels = [];
     const isAvail = selectedNetwork.toLowerCase() === 'avail';
 
-    // Helper: parse numeric portion safely (remove commas)
     const parseAmount = (s) => parseFloat((s || '0').toString().replace(/,/g, '').split(' ')[0]) || 0;
-
-    // Get sorted month keys for iteration
     const sortedMonths = Object.keys(monthlyGrouped).sort();
 
     sortedMonths.forEach((monthKey, index) => {
       const entries = monthlyGrouped[monthKey];
-      // Sort entries by timestamp (use moment UTC for consistent parsing)
       entries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
       
       let monthlyReward = 0;
 
       if (isAvail) {
-        // For Avail: cumulative sum of all total_rewards in that month
         monthlyReward = entries.reduce((sum, entry) => {
           const amount = parseAmount(entry.total_rewards);
           return sum + amount;
         }, 0);
       } else {
-        // For others: last entry of current month - last entry of previous month
-        // This gives true monthly earnings for cumulative total_rewards fields
         const lastRewardCurrentMonth = parseAmount(entries[entries.length - 1].total_rewards);
         
         let lastRewardPreviousMonth = 0;
         if (index > 0) {
-          // Get last entry of previous month
           const prevMonthKey = sortedMonths[index - 1];
           const prevMonthEntries = monthlyGrouped[prevMonthKey];
           prevMonthEntries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
           lastRewardPreviousMonth = parseAmount(prevMonthEntries[prevMonthEntries.length - 1].total_rewards);
         } else {
-          // First month: use first entry as baseline (no previous month data)
           lastRewardPreviousMonth = parseAmount(entries[0].total_rewards);
         }
         
         monthlyReward = lastRewardCurrentMonth - lastRewardPreviousMonth;
-        console.log(`[${selectedNetwork}] Month: ${monthKey}, PrevMonthLast: ${lastRewardPreviousMonth}, CurrentMonthLast: ${lastRewardCurrentMonth}, Delta: ${monthlyReward}, Entries: ${entries.length}`);
       }
 
       monthlyLabels.push(monthKey);
       monthlyValues.push(Math.max(0, monthlyReward));
-    });    return {
+    });
+
+    return {
       labels: monthlyLabels,
       datasets: [
         {
@@ -631,10 +880,9 @@ function App() {
     };
   }, [monthlyChartData, selectedNetwork, theme]);
 
-
   const fetchNetworks = async () => {
     try {
-      const res = await axios.get(NETWORKS_API);
+      const res = await api.get('/networks');
       setNetworks(res.data);
       if (res.data.length && !selectedNetwork) {
         setSelectedNetwork(res.data[0]);
@@ -650,7 +898,7 @@ function App() {
     if (!selectedNetwork) return;
     setIsLoading(prev => ({ ...prev, validators: true }));
     try {
-      const res = await axios.get(`${NETWORKS_API}/${selectedNetwork}/latest`);
+      const res = await api.get(`/networks/${selectedNetwork}/latest`);
       setValidatorList(res.data || []);
     } catch (err) {
       console.error('Failed to fetch latest validator list:', err);
@@ -663,7 +911,7 @@ function App() {
     if (!selectedNetwork) return;
     setIsLoading(prev => ({ ...prev, chart: true }));
     try {
-      const res = await axios.get(`${NETWORKS_API}/${selectedNetwork}/history?range=${range}`);
+      const res = await api.get(`/networks/${selectedNetwork}/history?range=${range}`);
       setData(res.data || []);
       if (res.data?.length) {
         setLatest(res.data[res.data.length - 1]);
@@ -679,7 +927,6 @@ function App() {
   const fetchMonthlyChartData = async () => {
     if (!selectedNetwork) return;
     try {
-      // Map friendly monthlyChartRange tokens to calendar-aligned "since" date
       const mapToMonths = {
         '30d': 1,
         '3m': 3,
@@ -687,9 +934,8 @@ function App() {
         '1y': 12,
       };
       const months = mapToMonths[monthlyChartRange] || 1;
-  // Start from the first day of (current month - (months - 1)) using UTC-aligned month boundaries
-  const since = moment().utc().startOf('month').subtract(months - 1, 'months').toISOString();
-      const res = await axios.get(`${NETWORKS_API}/${selectedNetwork}/history?since=${encodeURIComponent(since)}`);
+      const since = moment().utc().startOf('month').subtract(months - 1, 'months').toISOString();
+      const res = await api.get(`/networks/${selectedNetwork}/history?since=${encodeURIComponent(since)}`);
       setMonthlyChartData(res.data || []);
     } catch (err) {
       console.error('Failed to fetch monthly chart data:', err);
@@ -720,7 +966,6 @@ function App() {
     }
   }, [selectedNetwork, monthlyChartRange]);
 
-  // Get validator with highest self-delegation
   const topValidator = useMemo(() => {
     if (!validatorList.length) return null;
     return validatorList.reduce((max, v) => {
@@ -728,14 +973,6 @@ function App() {
       const maxVal = parseFloat((max.self_delegations || '0').split(' ')[0]) || 0;
       return currentVal > maxVal ? v : max;
     }, validatorList[0]);
-  }, [validatorList]);
-
-  // Calculate total rewards
-  const totalRewards = useMemo(() => {
-    if (!validatorList.length) return 0;
-    return validatorList.reduce((sum, v) => {
-      return sum + (parseFloat((v.rewards || '0').split(' ')[0]) || 0);
-    }, 0);
   }, [validatorList]);
 
   const chartData = useMemo(() => ({
@@ -748,13 +985,6 @@ function App() {
         backgroundColor: alpha(theme.palette.success.main, 0.1),
         borderColor: theme.palette.success.main,
         borderWidth: 2,
-        pointBackgroundColor: theme.palette.background.paper,
-        pointBorderColor: theme.palette.success.main,
-        pointHoverRadius: 6,
-        pointHoverBackgroundColor: theme.palette.success.main,
-        pointHoverBorderColor: theme.palette.background.paper,
-        pointHitRadius: 10,
-        pointBorderWidth: 2,
         tension: 0.3,
       },
       {
@@ -764,13 +994,6 @@ function App() {
         backgroundColor: alpha(theme.palette.primary.main, 0.1),
         borderColor: theme.palette.primary.main,
         borderWidth: 2,
-        pointBackgroundColor: theme.palette.background.paper,
-        pointBorderColor: theme.palette.primary.main,
-        pointHoverRadius: 6,
-        pointHoverBackgroundColor: theme.palette.primary.main,
-        pointHoverBorderColor: theme.palette.background.paper,
-        pointHitRadius: 10,
-        pointBorderWidth: 2,
         tension: 0.3,
       },
       {
@@ -780,19 +1003,11 @@ function App() {
         backgroundColor: alpha(theme.palette.secondary.main, 0.1),
         borderColor: theme.palette.secondary.main,
         borderWidth: 2,
-        pointBackgroundColor: theme.palette.background.paper,
-        pointBorderColor: theme.palette.secondary.main,
-        pointHoverRadius: 6,
-        pointHoverBackgroundColor: theme.palette.secondary.main,
-        pointHoverBorderColor: theme.palette.background.paper,
-        pointHitRadius: 10,
-        pointBorderWidth: 2,
         tension: 0.3,
       }
     ]
   }), [data, theme]);
 
-  // Separate dataset for total_rewards history (per-network table field)
   const totalRewardsChartData = useMemo(() => ({
     labels: data.map(d => d.timestamp && new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
     datasets: [
@@ -803,27 +1018,11 @@ function App() {
         backgroundColor: alpha(theme.palette.info.main, 0.08),
         borderColor: theme.palette.info.main,
         borderWidth: 2,
-        pointBackgroundColor: theme.palette.background.paper,
-        pointBorderColor: theme.palette.info.main,
-        pointHoverRadius: 6,
-        pointHoverBackgroundColor: theme.palette.info.main,
-        pointHoverBorderColor: theme.palette.background.paper,
-        pointHitRadius: 10,
-        pointBorderWidth: 2,
         tension: 0.3,
       }
     ]
   }), [data, theme]);
 
-  const handleNetworkChange = (event) => {
-    setSelectedNetwork(event.target.value);
-  };
-
-  const handleRangeChange = (event) => {
-    setRange(event.target.value);
-  };
-
-  // Format network name for display
   const formatNetworkName = (network) => {
     if (network === 'all') return 'All Networks';
     return network.split('_').map(word => 
@@ -832,202 +1031,164 @@ function App() {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+    <>
+      <AppBar position="static" elevation={1}>
+        <Toolbar>
+          <NetworkCheckIcon sx={{ mr: 2 }} />
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
             Validator Dashboard
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Monitor your validator's performance across multiple networks
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {lastUpdated && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
-              Last updated: {new Date(lastUpdated).toLocaleTimeString()}
-            </Typography>
-          )}
-          <Tooltip title="Refresh data">
-            <IconButton 
-              onClick={handleRefresh}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Chip
+              label={user?.username}
+              color="primary"
+              variant="outlined"
               size="small"
-              sx={{
-                backgroundColor: 'action.hover',
-                '&:hover': {
-                  backgroundColor: 'action.selected',
-                },
-              }}
-              disabled={Object.values(isLoading).some(Boolean)}
-            >
-              <RefreshIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+            />
+            {user?.role === 'admin' && (
+              <Tooltip title="User Management">
+                <IconButton
+                  color="inherit"
+                  onClick={() => setAdminPanelOpen(true)}
+                  size="small"
+                >
+                  <AdminPanelSettingsIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="Logout">
+              <IconButton color="inherit" onClick={handleLogout} size="small">
+                <LogoutIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        {/* Header */}
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+              Network Performance
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Monitor your validator's performance across multiple networks
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {lastUpdated && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                Last updated: {new Date(lastUpdated).toLocaleTimeString()}
+              </Typography>
+            )}
+            <Tooltip title="Refresh data">
+              <IconButton 
+                onClick={handleRefresh}
+                size="small"
+                sx={{
+                  backgroundColor: 'action.hover',
+                  '&:hover': {
+                    backgroundColor: 'action.selected',
+                  },
+                }}
+                disabled={Object.values(isLoading).some(Boolean)}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
-      </Box>
 
-      {/* Network and Time Range Selectors */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <FormControl fullWidth size="small">
-            <StyledInputLabel id="network-select-label">Network</StyledInputLabel>
-            <StyledSelect
-              labelId="network-select-label"
-              id="network-select"
-              value={selectedNetwork}
-              label="Network"
-              onChange={handleNetworkChange}
-              disabled={isLoading.network}
-              startAdornment={
-                <NetworkCheckIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
-              }
-            >
-              {networks.map(network => (
-                <MenuItem key={network} value={network}>
-                  {formatNetworkName(network)}
-                </MenuItem>
-              ))}
-            </StyledSelect>
-          </FormControl>
+        {/* Network and Time Range Selectors */}
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="network-select-label">Network</InputLabel>
+              <StyledSelect
+                labelId="network-select-label"
+                value={selectedNetwork}
+                label="Network"
+                onChange={(e) => setSelectedNetwork(e.target.value)}
+                disabled={isLoading.network}
+                startAdornment={
+                  <NetworkCheckIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
+                }
+              >
+                {networks.map(network => (
+                  <MenuItem key={network} value={network}>
+                    {formatNetworkName(network)}
+                  </MenuItem>
+                ))}
+              </StyledSelect>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="time-range-label">Time Range</InputLabel>
+              <StyledSelect
+                labelId="time-range-label"
+                value={range}
+                label="Time Range"
+                onChange={(e) => setRange(e.target.value)}
+                disabled={isLoading.chart}
+                startAdornment={
+                  <TimelineIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
+                }
+              >
+                {TIME_RANGES.map(range => (
+                  <MenuItem key={range.value} value={range.value}>
+                    {range.label}
+                  </MenuItem>
+                ))}
+              </StyledSelect>
+            </FormControl>
+          </Grid>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <FormControl fullWidth size="small">
-            <StyledInputLabel id="time-range-label">Time Range</StyledInputLabel>
-            <StyledSelect
-              labelId="time-range-label"
-              id="time-range-select"
-              value={range}
-              label="Time Range"
-              onChange={handleRangeChange}
-              disabled={isLoading.chart}
-              startAdornment={
-                <TimelineIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
-              }
-            >
-              {TIME_RANGES.map(range => (
-                <MenuItem key={range.value} value={range.value}>
-                  {range.label}
-                </MenuItem>
-              ))}
-            </StyledSelect>
-          </FormControl>
-        </Grid>
-      </Grid>
 
-      {/* Validator Address Card */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12}>
-          <StatCard>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <StatIcon color="primary">
-                  <AccountBalanceWalletIcon />
-                </StatIcon>
-                <Box ml={2} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  <StatLabel>Validator Address</StatLabel>
-                  <StatValue variant="h6" sx={{ wordBreak: 'break-all', fontSize: '0.95rem' }}>
-                    {isLoading.validators ? (
-                      <Skeleton width="100%" animation="wave" />
-                    ) : topValidator ? (
-                      topValidator.validator_addr || 'N/A'
-                    ) : (
-                      'No validator data'
-                    )}
-                  </StatValue>
+        {/* Validator Address Card */}
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12}>
+            <StatCard>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <StatIcon color="primary">
+                    <AccountBalanceWalletIcon />
+                  </StatIcon>
+                  <Box ml={2} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <StatLabel>Validator Address</StatLabel>
+                    <StatValue variant="h6" sx={{ wordBreak: 'break-all', fontSize: '0.95rem' }}>
+                      {isLoading.validators ? (
+                        <Skeleton width="100%" animation="wave" />
+                      ) : topValidator ? (
+                        topValidator.validator_addr || 'N/A'
+                      ) : (
+                        'No validator data'
+                      )}
+                    </StatValue>
+                  </Box>
                 </Box>
-              </Box>
-            </CardContent>
-          </StatCard>
+              </CardContent>
+            </StatCard>
+          </Grid>
         </Grid>
-      </Grid>
 
-      {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <StatIcon color="info">
-                  <PeopleIcon />
-                </StatIcon>
-                <Box ml={2}>
-                  <StatLabel>Self Delegations</StatLabel>
-                  <StatValue variant="h5">
-                    {isLoading.validators ? (
-                      <Skeleton width={100} animation="wave" />
-                    ) : topValidator?.self_delegations ? (
-                      formatNumber(topValidator.self_delegations)
-                    ) : (
-                      'N/A'
-                    )}
-                  </StatValue>
-                </Box>
-              </Box>
-            </CardContent>
-          </StatCard>
-        </Grid>
-  <Grid item xs={12} sm={6} md={3}>
-          <StatCard>
-            <CardContent>
-              <Box display="flex" alignItems="center" mb={2}>
-                <StatIcon color="secondary">
-                  <PeopleIcon />
-                </StatIcon>
-                <Box ml={2}>
-                  <StatLabel>External Delegations</StatLabel>
-                  <StatValue variant="h5">
-                    {isLoading.validators ? (
-                      <Skeleton width={100} animation="wave" />
-                    ) : topValidator?.external_delegations ? (
-                      formatNumber(topValidator.external_delegations)
-                    ) : (
-                      'N/A'
-                    )}
-                  </StatValue>
-                </Box>
-              </Box>
-            </CardContent>
-          </StatCard>
-        </Grid>
-  <Grid item xs={12} sm={6} md={3}>
-          <StatCard>
-            <CardContent>
-              <Box display="flex" alignItems="center" mb={2}>
-                <StatIcon color="success">
-                  <EmojiEventsIcon />
-                </StatIcon>
-                <Box ml={2}>
-                  <StatLabel>Total Pending Rewards</StatLabel>
-                  <StatValue variant="h5">
-                    {isLoading.validators ? (
-                      <Skeleton width={100} animation="wave" />
-                    ) : topValidator?.rewards ? (
-                      formatNumber(topValidator.rewards)
-                    ) : (
-                      'N/A'
-                    )}
-                  </StatValue>
-                </Box>
-              </Box>
-            </CardContent>
-          </StatCard>
-        </Grid>
-        {selectedNetwork !== 'all' && (
+        {/* Summary Cards */}
+        <Grid container spacing={3} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard>
               <CardContent>
-                <Box display="flex" alignItems="center" mb={2}>
-                  <StatIcon color="success">
-                    <EmojiEventsIcon />
+                <Box display="flex" alignItems="center">
+                  <StatIcon color="info">
+                    <PeopleIcon />
                   </StatIcon>
                   <Box ml={2}>
-                    <StatLabel>Total Rewards</StatLabel>
+                    <StatLabel>Self Delegations</StatLabel>
                     <StatValue variant="h5">
-                      {isLoading.chart ? (
+                      {isLoading.validators ? (
                         <Skeleton width={100} animation="wave" />
-                      ) : latest?.total_rewards ? (
-                        formatNumber(latest.total_rewards)
+                      ) : topValidator?.self_delegations ? (
+                        formatNumber(topValidator.self_delegations)
                       ) : (
                         'N/A'
                       )}
@@ -1037,72 +1198,87 @@ function App() {
               </CardContent>
             </StatCard>
           </Grid>
-        )}
-      </Grid>
-
-      {/* Chart */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12}>
-          <StyledPaper>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-                Delegation & Rewards History
-              </Typography>
-              {lastUpdated && (
-                <Typography variant="caption" color="text.secondary">
-                  Updated: {new Date(lastUpdated).toLocaleString()}
-                </Typography>
-              )}
-            </Box>
-            <ChartContainer>
-              {isLoading.chart ? (
-                <LoadingOverlay>
-                  <CircularProgress size={24} sx={{ mr: 1 }} />
-                  <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
-                </LoadingOverlay>
-              ) : data.length === 0 ? (
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  height: '100%',
-                  color: 'text.secondary',
-                  p: 3,
-                  textAlign: 'center'
-                }}>
-                  <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-                  <Typography variant="body1" gutterBottom>No data available</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Select a different time range or check back later for updates.
-                  </Typography>
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <StatIcon color="secondary">
+                    <PeopleIcon />
+                  </StatIcon>
+                  <Box ml={2}>
+                    <StatLabel>External Delegations</StatLabel>
+                    <StatValue variant="h5">
+                      {isLoading.validators ? (
+                        <Skeleton width={100} animation="wave" />
+                      ) : topValidator?.external_delegations ? (
+                        formatNumber(topValidator.external_delegations)
+                      ) : (
+                        'N/A'
+                      )}
+                    </StatValue>
+                  </Box>
                 </Box>
-              ) : (
-                <Line 
-                  data={chartData} 
-                  options={chartOptions(theme)} 
-                  height={400}
-                />
-              )}
-            </ChartContainer>
-          </StyledPaper>
+              </CardContent>
+            </StatCard>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <StatIcon color="success">
+                    <EmojiEventsIcon />
+                  </StatIcon>
+                  <Box ml={2}>
+                    <StatLabel>Total Pending Rewards</StatLabel>
+                    <StatValue variant="h5">
+                      {isLoading.validators ? (
+                        <Skeleton width={100} animation="wave" />
+                      ) : topValidator?.rewards ? (
+                        formatNumber(topValidator.rewards)
+                      ) : (
+                        'N/A'
+                      )}
+                    </StatValue>
+                  </Box>
+                </Box>
+              </CardContent>
+            </StatCard>
+          </Grid>
+          {selectedNetwork !== 'all' && (
+            <Grid item xs={12} sm={6} md={3}>
+              <StatCard>
+                <CardContent>
+                  <Box display="flex" alignItems="center">
+                    <StatIcon color="success">
+                      <EmojiEventsIcon />
+                    </StatIcon>
+                    <Box ml={2}>
+                      <StatLabel>Total Rewards</StatLabel>
+                      <StatValue variant="h5">
+                        {isLoading.chart ? (
+                          <Skeleton width={100} animation="wave" />
+                        ) : latest?.total_rewards ? (
+                          formatNumber(latest.total_rewards)
+                        ) : (
+                          'N/A'
+                        )}
+                      </StatValue>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </StatCard>
+            </Grid>
+          )}
         </Grid>
-      </Grid>
 
-      {/* Total Rewards History chart (per-network total_rewards) - only for individual networks, not 'all' */}
-      {selectedNetwork !== 'all' && (
+        {/* Chart */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12}>
             <StyledPaper>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-                  Total Rewards History
+                  Delegation & Rewards History
                 </Typography>
-                {lastUpdated && (
-                  <Typography variant="caption" color="text.secondary">
-                    Updated: {new Date(lastUpdated).toLocaleString()}
-                  </Typography>
-                )}
               </Box>
               <ChartContainer>
                 {isLoading.chart ? (
@@ -1123,13 +1299,10 @@ function App() {
                   }}>
                     <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
                     <Typography variant="body1" gutterBottom>No data available</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Select a different time range or check back later for updates.
-                    </Typography>
                   </Box>
                 ) : (
                   <Line 
-                    data={totalRewardsChartData} 
+                    data={chartData} 
                     options={chartOptions(theme)} 
                     height={400}
                   />
@@ -1138,453 +1311,172 @@ function App() {
             </StyledPaper>
           </Grid>
         </Grid>
-      )}
 
-      {/* Monthly Rewards Bar Chart (per-network) - only for individual networks, not 'all' */}
-      {selectedNetwork !== 'all' && selectedNetwork !== 'namada' && selectedNetwork !== 'nomic' && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <StyledPaper>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-                    Monthly Rewards {selectedNetwork?.toLowerCase() === 'avail' ? '(Cumulative)' : '(Delta)'}
-                  </Typography>
-                  <FormControl sx={{ minWidth: 150 }} size="small">
-                    <InputLabel>Time Period</InputLabel>
-                    <Select
-                      value={monthlyChartRange}
-                      label="Time Period"
-                      onChange={(e) => setMonthlyChartRange(e.target.value)}
-                    >
-                      <MenuItem value="30d">1 Month</MenuItem>
-                      <MenuItem value="3m">3 Months</MenuItem>
-                      <MenuItem value="6m">6 Months</MenuItem>
-                      <MenuItem value="1y">1 Year</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-                {lastUpdated && (
-                  <Typography variant="caption" color="text.secondary">
-                    Updated: {new Date(lastUpdated).toLocaleString()}
-                  </Typography>
-                )}
-              </Box>
-              <ChartContainer>
-                {isLoading.chart ? (
-                  <LoadingOverlay>
-                    <CircularProgress size={24} sx={{ mr: 1 }} />
-                    <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
-                  </LoadingOverlay>
-                ) : monthlyRewardsData.labels.length === 0 ? (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    height: '100%',
-                    color: 'text.secondary',
-                    p: 3,
-                    textAlign: 'center'
-                  }}>
-                    <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-                    <Typography variant="body1" gutterBottom>No data available</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Not enough data to calculate monthly rewards.
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Bar 
-                    data={monthlyRewardsData} 
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      indexAxis: 'x',
-                      plugins: {
-                        legend: {
-                          position: 'top',
-                          labels: {
-                            usePointStyle: true,
-                            padding: 20,
-                            color: theme.palette.text.secondary,
-                            font: {
-                              family: theme.typography.fontFamily,
-                              size: 13,
-                            },
-                          },
-                        },
-                        tooltip: {
-                          backgroundColor: theme.palette.background.paper,
-                          titleColor: theme.palette.text.primary,
-                          bodyColor: theme.palette.text.secondary,
-                          borderColor: theme.palette.divider,
-                          borderWidth: 1,
-                          padding: 16,
-                          boxShadow: theme.shadows[3],
-                          titleFont: {
-                            weight: 600,
-                            size: 14,
-                            family: theme.typography.fontFamily,
-                          },
-                          bodyFont: {
-                            size: 13,
-                            family: theme.typography.fontFamily,
-                          },
-                          callbacks: {
-                            label: function(context) {
-                              return `${context.dataset.label}: ${formatNumber(context.parsed.y)}`;
-                            }
-                          }
-                        }
-                      },
-                      scales: {
-                        x: {
-                          grid: {
-                            display: false,
-                            drawBorder: false,
-                          },
-                          ticks: {
-                            color: theme.palette.text.secondary,
-                            font: {
-                              size: 12,
-                            },
-                          },
-                        },
-                        y: {
-                          grid: {
-                            borderDash: [3, 3],
-                            drawBorder: false,
-                            color: theme.palette.divider,
-                          },
-                          ticks: {
-                            padding: 10,
-                            color: theme.palette.text.secondary,
-                            font: {
-                              size: 12,
-                            },
-                            callback: function(value) {
-                              return formatNumber(value);
-                            }
-                          }
-                        }
-                      }
-                    }}
-                    height={400}
-                  />
-                )}
-              </ChartContainer>
-            </StyledPaper>
-          </Grid>
-        </Grid>
-      )}
-
-      {/* Self Delegation Across All Networks */}
-      {selectedNetwork === 'all' && (
-        <>
+        {/* Total Rewards History */}
+        {selectedNetwork !== 'all' && (
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
               <StyledPaper>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                   <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                    Total Rewards History
+                  </Typography>
+                </Box>
+                <ChartContainer>
+                  {isLoading.chart ? (
+                    <LoadingOverlay>
+                      <CircularProgress size={24} />
+                    </LoadingOverlay>
+                  ) : (
+                    <Line 
+                      data={totalRewardsChartData} 
+                      options={chartOptions(theme)} 
+                      height={400}
+                    />
+                  )}
+                </ChartContainer>
+              </StyledPaper>
+            </Grid>
+          </Grid>
+        )}
+
+        {/* Monthly Rewards */}
+        {selectedNetwork !== 'all' && selectedNetwork !== 'namada' && selectedNetwork !== 'nomic' && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <StyledPaper>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                      Monthly Rewards
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <InputLabel>Period</InputLabel>
+                      <Select
+                        value={monthlyChartRange}
+                        label="Period"
+                        onChange={(e) => setMonthlyChartRange(e.target.value)}
+                      >
+                        <MenuItem value="30d">1 Month</MenuItem>
+                        <MenuItem value="3m">3 Months</MenuItem>
+                        <MenuItem value="6m">6 Months</MenuItem>
+                        <MenuItem value="1y">1 Year</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                </Box>
+                <ChartContainer>
+                  {monthlyRewardsData.labels.length === 0 ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                      <Typography color="text.secondary">No data available</Typography>
+                    </Box>
+                  ) : (
+                    <Bar data={monthlyRewardsData} options={chartOptions(theme)} height={400} />
+                  )}
+                </ChartContainer>
+              </StyledPaper>
+            </Grid>
+          </Grid>
+        )}
+
+        {/* All Networks Charts */}
+        {selectedNetwork === 'all' && (
+          <>
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12}>
+                <StyledPaper>
+                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
                     Self Delegation Across All Networks
                   </Typography>
-                </Box>
-                <ChartContainer>
-                  {isLoadingAllNetworks ? (
-                    <LoadingOverlay>
-                      <CircularProgress size={24} sx={{ mr: 1 }} />
-                      <Typography variant="body2" sx={{ mt: 1 }}>Loading network data...</Typography>
-                    </LoadingOverlay>
-                  ) : (
-                    <Line 
-                      data={processSelfDelegationData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                          mode: 'index',
-                          intersect: false,
-                        },
-                        plugins: {
-                          legend: {
-                            position: 'top',
-                            align: 'end',
-                            labels: {
-                              usePointStyle: true,
-                              padding: 20,
-                              color: theme.palette.text.secondary,
-                              font: {
-                                family: theme.typography.fontFamily,
-                                size: 13,
-                              },
-                            },
-                          },
-                          tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            backgroundColor: theme.palette.background.paper,
-                            titleColor: theme.palette.text.primary,
-                            bodyColor: theme.palette.text.secondary,
-                            borderColor: theme.palette.divider,
-                            borderWidth: 1,
-                            padding: 16,
-                            boxShadow: theme.shadows[3],
-                            titleFont: {
-                              weight: 600,
-                              size: 14,
-                              family: theme.typography.fontFamily,
-                            },
-                            bodyFont: {
-                              size: 13,
-                              family: theme.typography.fontFamily,
-                            },
-                            callbacks: {
-                              label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                  label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                  label += '$' + context.parsed.y.toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2
-                                  });
-                                }
-                                return label;
+                  <ChartContainer>
+                    {isLoadingAllNetworks ? (
+                      <LoadingOverlay>
+                        <CircularProgress size={24} />
+                      </LoadingOverlay>
+                    ) : (
+                      <Line 
+                        data={processSelfDelegationData}
+                        options={{
+                          ...chartOptions(theme),
+                          scales: {
+                            ...chartOptions(theme).scales,
+                            x: {
+                              ...chartOptions(theme).scales.x,
+                              type: 'time',
+                              time: {
+                                unit: 'day',
+                                tooltipFormat: 'MMM d, yyyy',
                               }
                             }
                           }
-                        },
-                        scales: {
-                          x: {
-                            type: 'time',
-                            time: {
-                              unit: 'day',
-                              tooltipFormat: 'MMM d, yyyy',
-                              displayFormats: {
-                                day: 'MMM d'
-                              }
-                            },
-                            grid: {
-                              display: false,
-                              drawBorder: false,
-                            },
-                            ticks: {
-                              maxRotation: 0,
-                              padding: 10,
-                              color: theme.palette.text.secondary,
-                              font: {
-                                size: 12,
-                              },
-                            },
-                          },
-                          y: {
-                            grid: {
-                              borderDash: [3, 3],
-                              drawBorder: false,
-                              color: theme.palette.divider,
-                            },
-                            ticks: {
-                              padding: 10,
-                              color: theme.palette.text.secondary,
-                              font: {
-                                size: 12,
-                              },
-                              callback: function(value) {
-                                return '$' + value.toLocaleString(undefined, {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 0
-                                });
-                              }
-                            }
-                          }
-                        },
-                        elements: {
-                          line: {
-                            tension: 0.4,
-                            borderWidth: 2,
-                          },
-                          point: {
-                            radius: 0,
-                            hoverRadius: 6,
-                            hoverBorderWidth: 2,
-                            backgroundColor: '#fff',
-                          },
-                        },
-                        layout: {
-                          padding: {
-                            top: 10,
-                            right: 20,
-                            bottom: 10,
-                            left: 10,
-                          },
-                        },
-                        animation: {
-                          duration: 1000,
-                        }
-                      }}
-                      height={400}
-                    />
-                  )}
-                </ChartContainer>
-              </StyledPaper>
+                        }}
+                        height={400}
+                      />
+                    )}
+                  </ChartContainer>
+                </StyledPaper>
+              </Grid>
             </Grid>
-          </Grid>
 
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <StyledPaper>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                  <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12}>
+                <StyledPaper>
+                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
                     External Delegation Across All Networks
                   </Typography>
-                </Box>
-                <ChartContainer>
-                  {isLoadingAllNetworks ? (
-                    <LoadingOverlay>
-                      <CircularProgress size={24} sx={{ mr: 1 }} />
-                      <Typography variant="body2" sx={{ mt: 1 }}>Loading network data...</Typography>
-                    </LoadingOverlay>
-                  ) : (
-                    <Line 
-                      data={processExternalDelegationData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                          mode: 'index',
-                          intersect: false,
-                        },
-                        plugins: {
-                          legend: {
-                            position: 'top',
-                            align: 'end',
-                            labels: {
-                              usePointStyle: true,
-                              padding: 20,
-                              color: theme.palette.text.secondary,
-                              font: {
-                                family: theme.typography.fontFamily,
-                                size: 13,
-                              },
-                            },
-                          },
-                          tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            backgroundColor: theme.palette.background.paper,
-                            titleColor: theme.palette.text.primary,
-                            bodyColor: theme.palette.text.secondary,
-                            borderColor: theme.palette.divider,
-                            borderWidth: 1,
-                            padding: 16,
-                            boxShadow: theme.shadows[3],
-                            titleFont: {
-                              weight: 600,
-                              size: 14,
-                              family: theme.typography.fontFamily,
-                            },
-                            bodyFont: {
-                              size: 13,
-                              family: theme.typography.fontFamily,
-                            },
-                            callbacks: {
-                              label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                  label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                  label += '$' + context.parsed.y.toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2
-                                  });
-                                }
-                                return label;
+                  <ChartContainer>
+                    {isLoadingAllNetworks ? (
+                      <LoadingOverlay>
+                        <CircularProgress size={24} />
+                      </LoadingOverlay>
+                    ) : (
+                      <Line 
+                        data={processExternalDelegationData}
+                        options={{
+                          ...chartOptions(theme),
+                          scales: {
+                            ...chartOptions(theme).scales,
+                            x: {
+                              ...chartOptions(theme).scales.x,
+                              type: 'time',
+                              time: {
+                                unit: 'day',
+                                tooltipFormat: 'MMM d, yyyy',
                               }
                             }
                           }
-                        },
-                        scales: {
-                          x: {
-                            type: 'time',
-                            time: {
-                              unit: 'day',
-                              tooltipFormat: 'MMM d, yyyy',
-                              displayFormats: {
-                                day: 'MMM d'
-                              }
-                            },
-                            grid: {
-                              display: false,
-                              drawBorder: false,
-                            },
-                            ticks: {
-                              maxRotation: 0,
-                              padding: 10,
-                              color: theme.palette.text.secondary,
-                              font: {
-                                size: 12,
-                              },
-                            },
-                          },
-                          y: {
-                            grid: {
-                              borderDash: [3, 3],
-                              drawBorder: false,
-                              color: theme.palette.divider,
-                            },
-                            ticks: {
-                              padding: 10,
-                              color: theme.palette.text.secondary,
-                              font: {
-                                size: 12,
-                              },
-                              callback: function(value) {
-                                return '$' + value.toLocaleString(undefined, {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 0
-                                });
-                              }
-                            }
-                          }
-                        },
-                        elements: {
-                          line: {
-                            tension: 0.4,
-                            borderWidth: 2,
-                          },
-                          point: {
-                            radius: 0,
-                            hoverRadius: 6,
-                            hoverBorderWidth: 2,
-                            backgroundColor: '#fff',
-                          },
-                        },
-                        layout: {
-                          padding: {
-                            top: 10,
-                            right: 20,
-                            bottom: 10,
-                            left: 10,
-                          },
-                        },
-                        animation: {
-                          duration: 1000,
-                        }
-                      }}
-                      height={400}
-                    />
-                  )}
-                </ChartContainer>
-              </StyledPaper>
+                        }}
+                        height={400}
+                      />
+                    )}
+                  </ChartContainer>
+                </StyledPaper>
+              </Grid>
             </Grid>
-          </Grid>
-        </>
-      )}
+          </>
+        )}
+      </Container>
 
-    </Container>
+      {user?.role === 'admin' && (
+        <AdminPanel open={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} />
+      )}
+    </>
   );
+}
+
+// Main App Component
+function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(!!getToken());
+
+  useEffect(() => {
+    Chart.register(...registerables);
+  }, []);
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
+  }
+
+  return <Dashboard />;
 }
 
 export default App;
