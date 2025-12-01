@@ -3,22 +3,22 @@ import moment from 'moment';
 import axios from 'axios';
 import { Chart, registerables } from 'chart.js';
 import 'chartjs-adapter-date-fns';
-import { 
-  Container, 
-  Typography, 
-  Select, 
-  MenuItem, 
-  FormControl, 
-  InputLabel, 
-  Box, 
-  Grid, 
-  Paper, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
-  TableRow, 
+import {
+  Container,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Box,
+  Grid,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Skeleton,
   CircularProgress,
   useTheme,
@@ -238,19 +238,19 @@ const createAxiosInstance = () => {
 // Format numbers
 const formatNumber = (input) => {
   if (input === null || input === undefined) return '0';
-  
+
   if (typeof input === 'number') {
     return new Intl.NumberFormat('en-US').format(input);
   }
-  
+
   if (typeof input === 'string') {
     const parts = input.trim().split(/\s+/);
     if (parts.length === 0) return '0';
-    
+
     const numberStr = parts[0];
     const number = parseFloat(numberStr);
     if (isNaN(number)) return input;
-    
+
     let formattedNumber;
     if (Math.abs(number) >= 1000000) {
       formattedNumber = new Intl.NumberFormat('en-US', {
@@ -266,10 +266,10 @@ const formatNumber = (input) => {
     } else {
       formattedNumber = new Intl.NumberFormat('en-US').format(number);
     }
-    
+
     return parts.length > 1 ? `${formattedNumber} ${parts.slice(1).join(' ')}` : formattedNumber;
   }
-  
+
   return '0';
 };
 
@@ -301,7 +301,7 @@ const chartOptions = (theme) => ({
       borderWidth: 1,
       padding: 16,
       callbacks: {
-        label: function(context) {
+        label: function (context) {
           let label = context.dataset.label || '';
           if (label) {
             label += ': ';
@@ -335,7 +335,7 @@ const chartOptions = (theme) => ({
       ticks: {
         padding: 10,
         color: theme.palette.text.secondary,
-        callback: function(value) {
+        callback: function (value) {
           return formatNumber(value);
         },
       },
@@ -495,7 +495,7 @@ function LoginPage({ onLogin }) {
           </Box>
         </form>
 
-        
+
       </LoginPaper>
     </LoginContainer>
   );
@@ -686,10 +686,10 @@ function Dashboard() {
 
   const fetchAllNetworksData = async () => {
     if (!networks.length) return;
-    
+
     setIsLoadingAllNetworks(true);
     const allData = {};
-    
+
     try {
       const networkPromises = networks.map(async (network) => {
         try {
@@ -700,12 +700,12 @@ function Dashboard() {
           return { network, data: [] };
         }
       });
-      
+
       const results = await Promise.all(networkPromises);
       results.forEach(({ network, data }) => {
         allData[network] = data;
       });
-      
+
       setAllNetworksData(allData);
     } catch (err) {
       console.error('Error fetching all networks data:', err);
@@ -752,10 +752,10 @@ function Dashboard() {
       '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
       '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'
     ];
-    
+
     Object.entries(allNetworksData).forEach(([network, data], index) => {
       if (network.toLowerCase() === 'nomic' || !data.length) return;
-      
+
       datasets.push({
         label: network.charAt(0).toUpperCase() + network.slice(1),
         data: data.map(d => ({
@@ -770,7 +770,7 @@ function Dashboard() {
         pointHoverRadius: 6,
       });
     });
-    
+
     return { datasets };
   }, [allNetworksData]);
 
@@ -780,10 +780,10 @@ function Dashboard() {
       '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
       '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'
     ];
-    
+
     Object.entries(allNetworksData).forEach(([network, data], index) => {
       if (network.toLowerCase() === 'nomic' || !data.length) return;
-      
+
       datasets.push({
         label: network.charAt(0).toUpperCase() + network.slice(1),
         data: data.map(d => ({
@@ -798,7 +798,7 @@ function Dashboard() {
         pointHoverRadius: 6,
       });
     });
-    
+
     return { datasets };
   }, [allNetworksData]);
 
@@ -838,7 +838,7 @@ function Dashboard() {
     sortedMonths.forEach((monthKey, index) => {
       const entries = monthlyGrouped[monthKey];
       entries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
-      
+
       let monthlyReward = 0;
 
       if (isAvail) {
@@ -848,7 +848,7 @@ function Dashboard() {
         }, 0);
       } else {
         const lastRewardCurrentMonth = parseAmount(entries[entries.length - 1].total_rewards);
-        
+
         let lastRewardPreviousMonth = 0;
         if (index > 0) {
           const prevMonthKey = sortedMonths[index - 1];
@@ -858,7 +858,7 @@ function Dashboard() {
         } else {
           lastRewardPreviousMonth = parseAmount(entries[0].total_rewards);
         }
-        
+
         monthlyReward = lastRewardCurrentMonth - lastRewardPreviousMonth;
       }
 
@@ -976,7 +976,7 @@ function Dashboard() {
   }, [validatorList]);
 
   const chartData = useMemo(() => ({
-    labels: data.map(d => d.timestamp && new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+    labels: data.map(d => d.timestamp && moment(d.timestamp).utc().format('MMM D')),
     datasets: [
       {
         label: 'Rewards',
@@ -1009,7 +1009,7 @@ function Dashboard() {
   }), [data, theme]);
 
   const totalRewardsChartData = useMemo(() => ({
-    labels: data.map(d => d.timestamp && new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+    labels: data.map(d => d.timestamp && moment(d.timestamp).utc().format('MMM D')),
     datasets: [
       {
         label: 'Total Rewards',
@@ -1025,7 +1025,7 @@ function Dashboard() {
 
   const formatNetworkName = (network) => {
     if (network === 'all') return 'All Networks';
-    return network.split('_').map(word => 
+    return network.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
@@ -1083,7 +1083,7 @@ function Dashboard() {
               </Typography>
             )}
             <Tooltip title="Refresh data">
-              <IconButton 
+              <IconButton
                 onClick={handleRefresh}
                 size="small"
                 sx={{
@@ -1287,11 +1287,11 @@ function Dashboard() {
                     <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
                   </LoadingOverlay>
                 ) : data.length === 0 ? (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
+                  <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     height: '100%',
                     color: 'text.secondary',
                     p: 3,
@@ -1301,9 +1301,9 @@ function Dashboard() {
                     <Typography variant="body1" gutterBottom>No data available</Typography>
                   </Box>
                 ) : (
-                  <Line 
-                    data={chartData} 
-                    options={chartOptions(theme)} 
+                  <Line
+                    data={chartData}
+                    options={chartOptions(theme)}
                     height={400}
                   />
                 )}
@@ -1328,9 +1328,9 @@ function Dashboard() {
                       <CircularProgress size={24} />
                     </LoadingOverlay>
                   ) : (
-                    <Line 
-                      data={totalRewardsChartData} 
-                      options={chartOptions(theme)} 
+                    <Line
+                      data={totalRewardsChartData}
+                      options={chartOptions(theme)}
                       height={400}
                     />
                   )}
@@ -1394,7 +1394,7 @@ function Dashboard() {
                         <CircularProgress size={24} />
                       </LoadingOverlay>
                     ) : (
-                      <Line 
+                      <Line
                         data={processSelfDelegationData}
                         options={{
                           ...chartOptions(theme),
@@ -1430,7 +1430,7 @@ function Dashboard() {
                         <CircularProgress size={24} />
                       </LoadingOverlay>
                     ) : (
-                      <Line 
+                      <Line
                         data={processExternalDelegationData}
                         options={{
                           ...chartOptions(theme),
