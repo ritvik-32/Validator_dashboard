@@ -866,19 +866,31 @@ function Dashboard() {
       monthlyValues.push(Math.max(0, monthlyReward));
     });
 
+    const mapToMonths = {
+      '30d': 1,
+      '3m': 3,
+      '6m': 6,
+      '1y': 12,
+    };
+    const monthsToShow = mapToMonths[monthlyChartRange] || 1;
+
+    // Slice to show only the requested number of months
+    const finalLabels = monthlyLabels.slice(-monthsToShow);
+    const finalValues = monthlyValues.slice(-monthsToShow);
+
     return {
-      labels: monthlyLabels,
+      labels: finalLabels,
       datasets: [
         {
           label: `Monthly Rewards${isAvail ? ' (Cumulative)' : ' (Delta)'} ${tokenSymbol}`,
-          data: monthlyValues,
+          data: finalValues,
           backgroundColor: theme.palette.primary.main,
           borderColor: theme.palette.primary.dark,
           borderWidth: 1,
         }
       ]
     };
-  }, [monthlyChartData, selectedNetwork, theme]);
+  }, [monthlyChartData, selectedNetwork, theme, monthlyChartRange]);
 
   const fetchNetworks = async () => {
     try {
@@ -934,7 +946,8 @@ function Dashboard() {
         '1y': 12,
       };
       const months = mapToMonths[monthlyChartRange] || 1;
-      const since = moment().utc().startOf('month').subtract(months - 1, 'months').toISOString();
+      // Fetch one extra month to calculate the delta for the first month
+      const since = moment().utc().startOf('month').subtract(months, 'months').toISOString();
       const res = await api.get(`/networks/${selectedNetwork}/history?since=${encodeURIComponent(since)}`);
       setMonthlyChartData(res.data || []);
     } catch (err) {
