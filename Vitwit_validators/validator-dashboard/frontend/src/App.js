@@ -54,6 +54,8 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import SettingsIcon from '@mui/icons-material/Settings';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 // API Base URL
 const API_BASE = 'http://localhost:5000/api';
@@ -501,6 +503,85 @@ function LoginPage({ onLogin }) {
   );
 }
 
+// My Network Component - Display static content
+function MyNetwork({ onBack, user }) {
+  const theme = useTheme();
+
+  // Your content here - edit this directly
+  const htmlContent = `
+    <div style="padding: 20px;">
+      <h1>My Network</h1>
+
+      <h2>MAINNET</h2>
+      <ul>
+        <li>Cosmos</li>
+        <li>Polygon</li>
+        <li>Avail</li>
+        <li>CheqD</li>
+        <li>Passage</li>
+        <li>Mantra</li>
+        <li>Osmosis</li>
+        <li>Agoric</li>
+        <li>Regen</li>
+        <li>Akash</li>
+        <li>Ika</li>
+        <li>Oasis</li>
+      </ul>
+
+      <h2>TESTNET</h2>
+      <ul>
+        <li>Avail Testnet</li>
+        <li>Cosmos Testnet</li>
+        <li>Imua Testnet</li>
+        <li>IKA Testnet</li>
+      </ul>
+    </div>
+  `;
+
+  return (
+    <>
+      <AppBar position="static" elevation={1}>
+        <Toolbar>
+          <IconButton color="inherit" onClick={onBack} sx={{ mr: 2 }}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
+            My Networks
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Chip
+              label={user?.username}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <StyledPaper>
+          <Box
+            dangerouslySetInnerHTML={{ __html: htmlContent }}
+            sx={{
+              '& h1': { fontSize: '2rem', fontWeight: 700, mb: 2, mt: 0 },
+              '& h2': { fontSize: '1.5rem', fontWeight: 600, mb: 1.5, mt: 2 },
+              '& h3': { fontSize: '1.25rem', fontWeight: 600, mb: 1 },
+              '& p': { mb: 1.5, lineHeight: 1.6 },
+              '& ul, & ol': { mb: 1.5, pl: 2.5 },
+              '& li': { mb: 0.5, lineHeight: 1.5 },
+              '& a': { color: theme.palette.primary.main, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } },
+              '& code': { backgroundColor: alpha(theme.palette.background.default, 0.7), p: '2px 6px', borderRadius: 1, fontFamily: 'monospace' },
+              '& pre': { backgroundColor: alpha(theme.palette.background.default, 0.7), p: 2, borderRadius: 1, overflow: 'auto', mb: 1.5 },
+              '& div': { mb: 1 },
+            }}
+          />
+        </StyledPaper>
+      </Container>
+    </>
+  );
+}
+
 // Admin Panel Component
 function AdminPanel({ open, onClose }) {
   const [users, setUsers] = useState([]);
@@ -678,6 +759,7 @@ function Dashboard() {
   const [isLoadingAllNetworks, setIsLoadingAllNetworks] = useState(true);
   const [monthlyChartData, setMonthlyChartData] = useState([]);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [showMyNetwork, setShowMyNetwork] = useState(false);
 
   const handleLogout = () => {
     clearAuth();
@@ -1045,40 +1127,52 @@ function Dashboard() {
 
   return (
     <>
-      <AppBar position="static" elevation={1}>
-        <Toolbar>
-          <NetworkCheckIcon sx={{ mr: 2 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
-            Validator Dashboard
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Chip
-              label={user?.username}
-              color="primary"
-              variant="outlined"
-              size="small"
-            />
-            {user?.role === 'admin' && (
-              <Tooltip title="User Management">
-                <IconButton
+      {showMyNetwork ? (
+        <MyNetwork onBack={() => setShowMyNetwork(false)} user={user} />
+      ) : (
+        <>
+          <AppBar position="static" elevation={1}>
+            <Toolbar>
+              <NetworkCheckIcon sx={{ mr: 2 }} />
+              <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
+                Validator Dashboard
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Button
                   color="inherit"
-                  onClick={() => setAdminPanelOpen(true)}
+                  onClick={() => setShowMyNetwork(true)}
                   size="small"
+                  sx={{ textTransform: 'none', fontSize: '1rem' }}
                 >
-                  <AdminPanelSettingsIcon />
-                </IconButton>
-              </Tooltip>
-            )}
-            <Tooltip title="Logout">
-              <IconButton color="inherit" onClick={handleLogout} size="small">
-                <LogoutIcon />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Toolbar>
-      </AppBar>
+                  My Networks
+                </Button>
+                <Chip
+                  label={user?.username}
+                  color="primary"
+                  variant="outlined"
+                  size="small"
+                />
+                {user?.role === 'admin' && (
+                  <Tooltip title="User Management">
+                    <IconButton
+                      color="inherit"
+                      onClick={() => setAdminPanelOpen(true)}
+                      size="small"
+                    >
+                      <AdminPanelSettingsIcon />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Tooltip title="Logout">
+                  <IconButton color="inherit" onClick={handleLogout} size="small">
+                    <LogoutIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Toolbar>
+          </AppBar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+          <Container maxWidth="xl" sx={{ py: 4 }}>
         {/* Header */}
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
@@ -1472,6 +1566,8 @@ function Dashboard() {
 
       {user?.role === 'admin' && (
         <AdminPanel open={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} />
+      )}
+        </>
       )}
     </>
   );
