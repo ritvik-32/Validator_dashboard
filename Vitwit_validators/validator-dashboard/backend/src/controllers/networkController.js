@@ -12,11 +12,11 @@ const ALL_NETWORKS = 'all';
 const getTimeRange = (range) => {
   // Use local timezone (IST)
   const now = moment().utcOffset('+05:30');
-  
+
   switch (range) {
-    case '1d': 
+    case '1d':
       return now.clone().subtract(1, 'days').startOf('day').toDate();
-    case '7d': 
+    case '7d':
       return now.clone().subtract(7, 'days').startOf('day').toDate();
     case '30d':
       return now.clone().subtract(30, 'days').startOf('day').toDate();
@@ -26,7 +26,7 @@ const getTimeRange = (range) => {
       return now.clone().subtract(6, 'months').startOf('day').toDate();
     case '1y':
       return now.clone().subtract(1, 'years').startOf('day').toDate();
-    default: 
+    default:
       return now.clone().subtract(7, 'days').startOf('day').toDate();
   }
 };
@@ -53,7 +53,7 @@ exports.getNetworkData = async (req, res) => {
       return res.status(500).json({ error: 'DB error', details: e.message });
     }
   }
-  
+
   if (!networks.includes(network)) return res.status(404).json({ error: 'Network not found' });
   const tableName = `${network}_data`;
   try {
@@ -78,7 +78,7 @@ exports.getNetworkDataHistory = async (req, res) => {
   } else {
     since = getTimeRange(range);
   }
-  
+
   if (network === ALL_NETWORKS) {
     try {
       const data = await db.query(
@@ -98,11 +98,12 @@ exports.getNetworkDataHistory = async (req, res) => {
       return res.status(500).json({ error: 'DB error', details: e.message });
     }
   }
-  
+
   if (!networks.includes(network)) return res.status(404).json({ error: 'Network not found' });
-  
+
   const tableName = `${network}_data`;
   try {
+    // Query returns all columns including rewards_delta
     const data = await db.query(
       `SELECT * FROM ${tableName} WHERE timestamp >= :since ORDER BY timestamp ASC`,
       { replacements: { since }, type: QueryTypes.SELECT }
@@ -130,7 +131,7 @@ exports.getAllNetworksData = async (req, res) => {
 // Returns the latest row for each validator_addr in the selected network's table
 exports.getNetworkLatestData = async (req, res) => {
   const { network } = req.params;
-  
+
   if (network === ALL_NETWORKS) {
     try {
       const [latest] = await db.query(
@@ -149,9 +150,9 @@ exports.getNetworkLatestData = async (req, res) => {
       return res.status(500).json({ error: 'DB error', details: e.message });
     }
   }
-  
+
   if (!networks.includes(network)) return res.status(404).json({ error: 'Network not found' });
-  
+
   const tableName = `${network}_data`;
   try {
     const data = await db.query(

@@ -914,6 +914,13 @@ function Dashboard() {
     const monthlyLabels = [];
     const isAvail = selectedNetwork.toLowerCase() === 'avail';
 
+    // Networks that use delta-based calculation (Cosmos chains with claim resets)
+    const deltaNetworks = ['agoric', 'akash', 'cheqd', 'cosmos', 'mantra', 'osmosis', 'passage', 'polygon', 'regen'];
+    const useDeltaCalculation = deltaNetworks.includes(selectedNetwork.toLowerCase());
+
+    // Only apply delta calculation for data from December 2025 onwards
+    const deltaStartDate = moment('2025-12-01').utc();
+
     const parseAmount = (s) => parseFloat((s || '0').toString().replace(/,/g, '').split(' ')[0]) || 0;
     const sortedMonths = Object.keys(monthlyGrouped).sort();
 
@@ -922,13 +929,46 @@ function Dashboard() {
       entries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
 
       let monthlyReward = 0;
+      const monthDate = moment(monthKey + '-01').utc();
+      const shouldUseDelta = useDeltaCalculation && monthDate.isSameOrAfter(deltaStartDate);
 
       if (isAvail) {
+        // Avail: cumulative approach (sum all entries)
         monthlyReward = entries.reduce((sum, entry) => {
           const amount = parseAmount(entry.total_rewards);
           return sum + amount;
         }, 0);
+      } else if (shouldUseDelta) {
+        // Delta-based calculation for Cosmos chains from Dec 2025 onwards
+        // Use pre-calculated rewards_delta from database
+        monthlyReward = entries.reduce((sum, entry, idx) => {
+          // If rewards_delta exists in the database, use it
+          if (entry.rewards_delta !== undefined && entry.rewards_delta !== null) {
+            const delta = parseFloat(entry.rewards_delta) || 0;
+            // Only count positive deltas (new rewards earned, ignore claims/resets)
+            return sum + (delta > 0 ? delta : 0);
+          } else {
+            // Fallback: calculate delta on-the-fly if rewards_delta not in DB yet
+            let delta = 0;
+
+            if (idx === 0 && index > 0) {
+              // First entry of month: compare to last entry of previous month
+              const prevMonthKey = sortedMonths[index - 1];
+              const prevMonthEntries = monthlyGrouped[prevMonthKey];
+              prevMonthEntries.sort((a, b) => moment(a.timestamp).utc().valueOf() - moment(b.timestamp).utc().valueOf());
+              const prevLast = parseAmount(prevMonthEntries[prevMonthEntries.length - 1].total_rewards);
+              delta = parseAmount(entry.total_rewards) - prevLast;
+            } else if (idx > 0) {
+              // Compare to previous entry in same month
+              delta = parseAmount(entry.total_rewards) - parseAmount(entries[idx - 1].total_rewards);
+            }
+
+            // Only count positive deltas (new rewards earned, ignore claims/resets)
+            return sum + (delta > 0 ? delta : 0);
+          }
+        }, 0);
       } else {
+        // Original calculation for other networks or pre-December data
         const lastRewardCurrentMonth = parseAmount(entries[entries.length - 1].total_rewards);
 
         let lastRewardPreviousMonth = 0;
@@ -964,7 +1004,7 @@ function Dashboard() {
       labels: finalLabels,
       datasets: [
         {
-          label: `Monthly Rewards${isAvail ? ' (Cumulative)' : ' (Delta)'} ${tokenSymbol}`,
+          label: `Monthly Rewards${isAvail ? ' (Cumulative)' : useDeltaCalculation ? ' (Delta-Based)' : ' (Delta)'} ${tokenSymbol}`,
           data: finalValues,
           backgroundColor: theme.palette.primary.main,
           borderColor: theme.palette.primary.dark,
@@ -1173,350 +1213,244 @@ function Dashboard() {
           </AppBar>
 
           <Container maxWidth="xl" sx={{ py: 4 }}>
-        {/* Header */}
-        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
-              Network Performance
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Monitor your validator's performance across multiple networks
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {lastUpdated && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
-                Last updated: {new Date(lastUpdated).toLocaleTimeString()}
-              </Typography>
-            )}
-            <Tooltip title="Refresh data">
-              <IconButton
-                onClick={handleRefresh}
-                size="small"
-                sx={{
-                  backgroundColor: 'action.hover',
-                  '&:hover': {
-                    backgroundColor: 'action.selected',
-                  },
-                }}
-                disabled={Object.values(isLoading).some(Boolean)}
-              >
-                <RefreshIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Box>
-
-        {/* Network and Time Range Selectors */}
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="network-select-label">Network</InputLabel>
-              <StyledSelect
-                labelId="network-select-label"
-                value={selectedNetwork}
-                label="Network"
-                onChange={(e) => setSelectedNetwork(e.target.value)}
-                disabled={isLoading.network}
-                startAdornment={
-                  <NetworkCheckIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
-                }
-              >
-                {networks.map(network => (
-                  <MenuItem key={network} value={network}>
-                    {formatNetworkName(network)}
-                  </MenuItem>
-                ))}
-              </StyledSelect>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="time-range-label">Time Range</InputLabel>
-              <StyledSelect
-                labelId="time-range-label"
-                value={range}
-                label="Time Range"
-                onChange={(e) => setRange(e.target.value)}
-                disabled={isLoading.chart}
-                startAdornment={
-                  <TimelineIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
-                }
-              >
-                {TIME_RANGES.map(range => (
-                  <MenuItem key={range.value} value={range.value}>
-                    {range.label}
-                  </MenuItem>
-                ))}
-              </StyledSelect>
-            </FormControl>
-          </Grid>
-        </Grid>
-
-        {/* Validator Address Card */}
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12}>
-            <StatCard>
-              <CardContent>
-                <Box display="flex" alignItems="center">
-                  <StatIcon color="primary">
-                    <AccountBalanceWalletIcon />
-                  </StatIcon>
-                  <Box ml={2} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <StatLabel>Validator Address</StatLabel>
-                    <StatValue variant="h6" sx={{ wordBreak: 'break-all', fontSize: '0.95rem' }}>
-                      {isLoading.validators ? (
-                        <Skeleton width="100%" animation="wave" />
-                      ) : topValidator ? (
-                        topValidator.validator_addr || 'N/A'
-                      ) : (
-                        'No validator data'
-                      )}
-                    </StatValue>
-                  </Box>
-                </Box>
-              </CardContent>
-            </StatCard>
-          </Grid>
-        </Grid>
-
-        {/* Summary Cards */}
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard>
-              <CardContent>
-                <Box display="flex" alignItems="center">
-                  <StatIcon color="info">
-                    <PeopleIcon />
-                  </StatIcon>
-                  <Box ml={2}>
-                    <StatLabel>Self Delegations</StatLabel>
-                    <StatValue variant="h5">
-                      {isLoading.validators ? (
-                        <Skeleton width={100} animation="wave" />
-                      ) : topValidator?.self_delegations ? (
-                        formatNumber(topValidator.self_delegations)
-                      ) : (
-                        'N/A'
-                      )}
-                    </StatValue>
-                  </Box>
-                </Box>
-              </CardContent>
-            </StatCard>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard>
-              <CardContent>
-                <Box display="flex" alignItems="center">
-                  <StatIcon color="secondary">
-                    <PeopleIcon />
-                  </StatIcon>
-                  <Box ml={2}>
-                    <StatLabel>External Delegations</StatLabel>
-                    <StatValue variant="h5">
-                      {isLoading.validators ? (
-                        <Skeleton width={100} animation="wave" />
-                      ) : topValidator?.external_delegations ? (
-                        formatNumber(topValidator.external_delegations)
-                      ) : (
-                        'N/A'
-                      )}
-                    </StatValue>
-                  </Box>
-                </Box>
-              </CardContent>
-            </StatCard>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard>
-              <CardContent>
-                <Box display="flex" alignItems="center">
-                  <StatIcon color="success">
-                    <EmojiEventsIcon />
-                  </StatIcon>
-                  <Box ml={2}>
-                    <StatLabel>Total Pending Rewards</StatLabel>
-                    <StatValue variant="h5">
-                      {isLoading.validators ? (
-                        <Skeleton width={100} animation="wave" />
-                      ) : topValidator?.rewards ? (
-                        formatNumber(topValidator.rewards)
-                      ) : (
-                        'N/A'
-                      )}
-                    </StatValue>
-                  </Box>
-                </Box>
-              </CardContent>
-            </StatCard>
-          </Grid>
-          {selectedNetwork !== 'all' && (
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard>
-                <CardContent>
-                  <Box display="flex" alignItems="center">
-                    <StatIcon color="success">
-                      <EmojiEventsIcon />
-                    </StatIcon>
-                    <Box ml={2}>
-                      <StatLabel>Total Rewards</StatLabel>
-                      <StatValue variant="h5">
-                        {isLoading.chart ? (
-                          <Skeleton width={100} animation="wave" />
-                        ) : latest?.total_rewards ? (
-                          formatNumber(latest.total_rewards)
-                        ) : (
-                          'N/A'
-                        )}
-                      </StatValue>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </StatCard>
-            </Grid>
-          )}
-        </Grid>
-
-        {/* Chart */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <StyledPaper>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-                  Delegation & Rewards History
+            {/* Header */}
+            <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                  Network Performance
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Monitor your validator's performance across multiple networks
                 </Typography>
               </Box>
-              <ChartContainer>
-                {isLoading.chart ? (
-                  <LoadingOverlay>
-                    <CircularProgress size={24} sx={{ mr: 1 }} />
-                    <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
-                  </LoadingOverlay>
-                ) : data.length === 0 ? (
-                  <Box sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    color: 'text.secondary',
-                    p: 3,
-                    textAlign: 'center'
-                  }}>
-                    <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-                    <Typography variant="body1" gutterBottom>No data available</Typography>
-                  </Box>
-                ) : (
-                  <Line
-                    data={chartData}
-                    options={chartOptions(theme)}
-                    height={400}
-                  />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {lastUpdated && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    Last updated: {new Date(lastUpdated).toLocaleTimeString()}
+                  </Typography>
                 )}
-              </ChartContainer>
-            </StyledPaper>
-          </Grid>
-        </Grid>
+                <Tooltip title="Refresh data">
+                  <IconButton
+                    onClick={handleRefresh}
+                    size="small"
+                    sx={{
+                      backgroundColor: 'action.hover',
+                      '&:hover': {
+                        backgroundColor: 'action.selected',
+                      },
+                    }}
+                    disabled={Object.values(isLoading).some(Boolean)}
+                  >
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
 
-        {/* Total Rewards History */}
-        {selectedNetwork !== 'all' && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <StyledPaper>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                  <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-                    Total Rewards History
-                  </Typography>
-                </Box>
-                <ChartContainer>
-                  {isLoading.chart ? (
-                    <LoadingOverlay>
-                      <CircularProgress size={24} />
-                    </LoadingOverlay>
-                  ) : (
-                    <Line
-                      data={totalRewardsChartData}
-                      options={chartOptions(theme)}
-                      height={400}
-                    />
-                  )}
-                </ChartContainer>
-              </StyledPaper>
+            {/* Network and Time Range Selectors */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="network-select-label">Network</InputLabel>
+                  <StyledSelect
+                    labelId="network-select-label"
+                    value={selectedNetwork}
+                    label="Network"
+                    onChange={(e) => setSelectedNetwork(e.target.value)}
+                    disabled={isLoading.network}
+                    startAdornment={
+                      <NetworkCheckIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
+                    }
+                  >
+                    {networks.map(network => (
+                      <MenuItem key={network} value={network}>
+                        {formatNetworkName(network)}
+                      </MenuItem>
+                    ))}
+                  </StyledSelect>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="time-range-label">Time Range</InputLabel>
+                  <StyledSelect
+                    labelId="time-range-label"
+                    value={range}
+                    label="Time Range"
+                    onChange={(e) => setRange(e.target.value)}
+                    disabled={isLoading.chart}
+                    startAdornment={
+                      <TimelineIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
+                    }
+                  >
+                    {TIME_RANGES.map(range => (
+                      <MenuItem key={range.value} value={range.value}>
+                        {range.label}
+                      </MenuItem>
+                    ))}
+                  </StyledSelect>
+                </FormControl>
+              </Grid>
             </Grid>
-          </Grid>
-        )}
 
-        {/* Monthly Rewards */}
-        {selectedNetwork !== 'all' && selectedNetwork !== 'namada' && selectedNetwork !== 'nomic' && (
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12}>
-              <StyledPaper>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-                      Monthly Rewards
-                    </Typography>
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <InputLabel>Period</InputLabel>
-                      <Select
-                        value={monthlyChartRange}
-                        label="Period"
-                        onChange={(e) => setMonthlyChartRange(e.target.value)}
-                      >
-                        <MenuItem value="30d">1 Month</MenuItem>
-                        <MenuItem value="3m">3 Months</MenuItem>
-                        <MenuItem value="6m">6 Months</MenuItem>
-                        <MenuItem value="1y">1 Year</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                </Box>
-                <ChartContainer>
-                  {monthlyRewardsData.labels.length === 0 ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                      <Typography color="text.secondary">No data available</Typography>
+            {/* Validator Address Card */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
+                <StatCard>
+                  <CardContent>
+                    <Box display="flex" alignItems="center">
+                      <StatIcon color="primary">
+                        <AccountBalanceWalletIcon />
+                      </StatIcon>
+                      <Box ml={2} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <StatLabel>Validator Address</StatLabel>
+                        <StatValue variant="h6" sx={{ wordBreak: 'break-all', fontSize: '0.95rem' }}>
+                          {isLoading.validators ? (
+                            <Skeleton width="100%" animation="wave" />
+                          ) : topValidator ? (
+                            topValidator.validator_addr || 'N/A'
+                          ) : (
+                            'No validator data'
+                          )}
+                        </StatValue>
+                      </Box>
                     </Box>
-                  ) : (
-                    <Bar data={monthlyRewardsData} options={chartOptions(theme)} height={400} />
-                  )}
-                </ChartContainer>
-              </StyledPaper>
+                  </CardContent>
+                </StatCard>
+              </Grid>
             </Grid>
-          </Grid>
-        )}
 
-        {/* All Networks Charts */}
-        {selectedNetwork === 'all' && (
-          <>
+            {/* Summary Cards */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard>
+                  <CardContent>
+                    <Box display="flex" alignItems="center">
+                      <StatIcon color="info">
+                        <PeopleIcon />
+                      </StatIcon>
+                      <Box ml={2}>
+                        <StatLabel>Self Delegations</StatLabel>
+                        <StatValue variant="h5">
+                          {isLoading.validators ? (
+                            <Skeleton width={100} animation="wave" />
+                          ) : topValidator?.self_delegations ? (
+                            formatNumber(topValidator.self_delegations)
+                          ) : (
+                            'N/A'
+                          )}
+                        </StatValue>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StatCard>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard>
+                  <CardContent>
+                    <Box display="flex" alignItems="center">
+                      <StatIcon color="secondary">
+                        <PeopleIcon />
+                      </StatIcon>
+                      <Box ml={2}>
+                        <StatLabel>External Delegations</StatLabel>
+                        <StatValue variant="h5">
+                          {isLoading.validators ? (
+                            <Skeleton width={100} animation="wave" />
+                          ) : topValidator?.external_delegations ? (
+                            formatNumber(topValidator.external_delegations)
+                          ) : (
+                            'N/A'
+                          )}
+                        </StatValue>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StatCard>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard>
+                  <CardContent>
+                    <Box display="flex" alignItems="center">
+                      <StatIcon color="success">
+                        <EmojiEventsIcon />
+                      </StatIcon>
+                      <Box ml={2}>
+                        <StatLabel>Total Pending Rewards</StatLabel>
+                        <StatValue variant="h5">
+                          {isLoading.validators ? (
+                            <Skeleton width={100} animation="wave" />
+                          ) : topValidator?.rewards ? (
+                            formatNumber(topValidator.rewards)
+                          ) : (
+                            'N/A'
+                          )}
+                        </StatValue>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StatCard>
+              </Grid>
+              {selectedNetwork !== 'all' && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <StatCard>
+                    <CardContent>
+                      <Box display="flex" alignItems="center">
+                        <StatIcon color="success">
+                          <EmojiEventsIcon />
+                        </StatIcon>
+                        <Box ml={2}>
+                          <StatLabel>Total Rewards</StatLabel>
+                          <StatValue variant="h5">
+                            {isLoading.chart ? (
+                              <Skeleton width={100} animation="wave" />
+                            ) : latest?.total_rewards ? (
+                              formatNumber(latest.total_rewards)
+                            ) : (
+                              'N/A'
+                            )}
+                          </StatValue>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </StatCard>
+                </Grid>
+              )}
+            </Grid>
+
+            {/* Chart */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
               <Grid item xs={12}>
                 <StyledPaper>
-                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-                    Self Delegation Across All Networks
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                      Delegation & Rewards History
+                    </Typography>
+                  </Box>
                   <ChartContainer>
-                    {isLoadingAllNetworks ? (
+                    {isLoading.chart ? (
                       <LoadingOverlay>
-                        <CircularProgress size={24} />
+                        <CircularProgress size={24} sx={{ mr: 1 }} />
+                        <Typography variant="body2" sx={{ mt: 1 }}>Loading chart data...</Typography>
                       </LoadingOverlay>
+                    ) : data.length === 0 ? (
+                      <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                        color: 'text.secondary',
+                        p: 3,
+                        textAlign: 'center'
+                      }}>
+                        <TimelineIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+                        <Typography variant="body1" gutterBottom>No data available</Typography>
+                      </Box>
                     ) : (
                       <Line
-                        data={processSelfDelegationData}
-                        options={{
-                          ...chartOptions(theme),
-                          scales: {
-                            ...chartOptions(theme).scales,
-                            x: {
-                              ...chartOptions(theme).scales.x,
-                              type: 'time',
-                              time: {
-                                unit: 'day',
-                                tooltipFormat: 'MMM d, yyyy',
-                              }
-                            }
-                          }
-                        }}
+                        data={chartData}
+                        options={chartOptions(theme)}
                         height={400}
                       />
                     )}
@@ -1525,48 +1459,154 @@ function Dashboard() {
               </Grid>
             </Grid>
 
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-              <Grid item xs={12}>
-                <StyledPaper>
-                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-                    External Delegation Across All Networks
-                  </Typography>
-                  <ChartContainer>
-                    {isLoadingAllNetworks ? (
-                      <LoadingOverlay>
-                        <CircularProgress size={24} />
-                      </LoadingOverlay>
-                    ) : (
-                      <Line
-                        data={processExternalDelegationData}
-                        options={{
-                          ...chartOptions(theme),
-                          scales: {
-                            ...chartOptions(theme).scales,
-                            x: {
-                              ...chartOptions(theme).scales.x,
-                              type: 'time',
-                              time: {
-                                unit: 'day',
-                                tooltipFormat: 'MMM d, yyyy',
-                              }
-                            }
-                          }
-                        }}
-                        height={400}
-                      />
-                    )}
-                  </ChartContainer>
-                </StyledPaper>
+            {/* Total Rewards History */}
+            {selectedNetwork !== 'all' && (
+              <Grid container spacing={3} sx={{ mb: 4 }}>
+                <Grid item xs={12}>
+                  <StyledPaper>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                        Total Rewards History
+                      </Typography>
+                    </Box>
+                    <ChartContainer>
+                      {isLoading.chart ? (
+                        <LoadingOverlay>
+                          <CircularProgress size={24} />
+                        </LoadingOverlay>
+                      ) : (
+                        <Line
+                          data={totalRewardsChartData}
+                          options={chartOptions(theme)}
+                          height={400}
+                        />
+                      )}
+                    </ChartContainer>
+                  </StyledPaper>
+                </Grid>
               </Grid>
-            </Grid>
-          </>
-        )}
-      </Container>
+            )}
 
-      {user?.role === 'admin' && (
-        <AdminPanel open={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} />
-      )}
+            {/* Monthly Rewards */}
+            {selectedNetwork !== 'all' && selectedNetwork !== 'namada' && selectedNetwork !== 'nomic' && (
+              <Grid container spacing={3} sx={{ mb: 4 }}>
+                <Grid item xs={12}>
+                  <StyledPaper>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
+                          Monthly Rewards
+                        </Typography>
+                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                          <InputLabel>Period</InputLabel>
+                          <Select
+                            value={monthlyChartRange}
+                            label="Period"
+                            onChange={(e) => setMonthlyChartRange(e.target.value)}
+                          >
+                            <MenuItem value="30d">1 Month</MenuItem>
+                            <MenuItem value="3m">3 Months</MenuItem>
+                            <MenuItem value="6m">6 Months</MenuItem>
+                            <MenuItem value="1y">1 Year</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Box>
+                    </Box>
+                    <ChartContainer>
+                      {monthlyRewardsData.labels.length === 0 ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                          <Typography color="text.secondary">No data available</Typography>
+                        </Box>
+                      ) : (
+                        <Bar data={monthlyRewardsData} options={chartOptions(theme)} height={400} />
+                      )}
+                    </ChartContainer>
+                  </StyledPaper>
+                </Grid>
+              </Grid>
+            )}
+
+            {/* All Networks Charts */}
+            {selectedNetwork === 'all' && (
+              <>
+                <Grid container spacing={3} sx={{ mb: 4 }}>
+                  <Grid item xs={12}>
+                    <StyledPaper>
+                      <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
+                        Self Delegation Across All Networks
+                      </Typography>
+                      <ChartContainer>
+                        {isLoadingAllNetworks ? (
+                          <LoadingOverlay>
+                            <CircularProgress size={24} />
+                          </LoadingOverlay>
+                        ) : (
+                          <Line
+                            data={processSelfDelegationData}
+                            options={{
+                              ...chartOptions(theme),
+                              scales: {
+                                ...chartOptions(theme).scales,
+                                x: {
+                                  ...chartOptions(theme).scales.x,
+                                  type: 'time',
+                                  time: {
+                                    unit: 'day',
+                                    tooltipFormat: 'MMM d, yyyy',
+                                  }
+                                }
+                              }
+                            }}
+                            height={400}
+                          />
+                        )}
+                      </ChartContainer>
+                    </StyledPaper>
+                  </Grid>
+                </Grid>
+
+                <Grid container spacing={3} sx={{ mb: 4 }}>
+                  <Grid item xs={12}>
+                    <StyledPaper>
+                      <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
+                        External Delegation Across All Networks
+                      </Typography>
+                      <ChartContainer>
+                        {isLoadingAllNetworks ? (
+                          <LoadingOverlay>
+                            <CircularProgress size={24} />
+                          </LoadingOverlay>
+                        ) : (
+                          <Line
+                            data={processExternalDelegationData}
+                            options={{
+                              ...chartOptions(theme),
+                              scales: {
+                                ...chartOptions(theme).scales,
+                                x: {
+                                  ...chartOptions(theme).scales.x,
+                                  type: 'time',
+                                  time: {
+                                    unit: 'day',
+                                    tooltipFormat: 'MMM d, yyyy',
+                                  }
+                                }
+                              }
+                            }}
+                            height={400}
+                          />
+                        )}
+                      </ChartContainer>
+                    </StyledPaper>
+                  </Grid>
+                </Grid>
+              </>
+            )}
+          </Container>
+
+          {user?.role === 'admin' && (
+            <AdminPanel open={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} />
+          )}
         </>
       )}
     </>
