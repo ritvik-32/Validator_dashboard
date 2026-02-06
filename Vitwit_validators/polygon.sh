@@ -3,7 +3,7 @@
 API_URL="https://staking-api.polygon.technology/api/v2/validators/50"
 DENOM="POL"
 AMOUNT_VALUE="POL"
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 COMMISSION_RATE="0.05"
@@ -17,6 +17,19 @@ fetch_matic_price() {
 # Fetch MATIC token price
 TOKEN_PRICE=$(fetch_matic_price)
 echo "Current MATIC price: \$$TOKEN_PRICE"
+
+# Check if price is null or empty, try fallback endpoints
+if [ "$TOKEN_PRICE" == "null" ] || [ -z "$TOKEN_PRICE" ]; then
+    echo "Warning: CoinGecko API failed, trying fallback..."
+    # Try alternative source or use cached price from database
+    TOKEN_PRICE=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM polygon_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+    if [ -z "$TOKEN_PRICE" ] || [ "$TOKEN_PRICE" == "null" ]; then
+        TOKEN_PRICE="0"
+        echo "Could not fetch price, using default: \$$TOKEN_PRICE"
+    else
+        echo "Using cached price: \$$TOKEN_PRICE"
+    fi
+fi
 
 JSON=$(curl -s --max-time 5 "$API_URL")
 
@@ -57,7 +70,7 @@ echo "Total Rewards: $TOTAL_REWARDS $AMOUNT_VALUE"
 
 
 ######
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO polygon_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '0xae09a7bcbcff2fd81f98f90eda73bd80b6883741',

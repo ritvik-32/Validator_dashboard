@@ -5,7 +5,7 @@ VALIDATOR="nomic1882hrszghhl3eekwk88wsv9d0za2v8qd6geh4v"
 ENDPOINTS="https://app.nomic.io:8443,https://api.nomic.quokkastake.io"
 DENOM="unom"
 AMOUNT_VALUE="NOM"
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
@@ -53,7 +53,7 @@ EXTERNAL_DELEGATIONS=$(awk "BEGIN {print $OVERALL_DELEGATIONS - $SELF_DELEGATION
 # OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewards.rewards[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
 # OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 # Insert new row into Postgres
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO nomic_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards)
 VALUES (
   '$VALIDATOR',

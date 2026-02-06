@@ -5,7 +5,7 @@ VALIDATOR="mantravaloper1caw6djrt9gz2m4qpgulypdfm8yrrx59fu0dkkk"
 ENDPOINTS="https://api.mantrachain.io,https://api-mantra.r93axnodes.cloud:443,https://mantrachain-mainnet-lcd.autostake.com:443,https://mantra-rest.publicnode.com,https://mantra-mainnet-api.itrocket.net,https://mantra.api.m.stavr.tech"
 DENOM="uom"
 AMOUNT_VALUE="om"
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 fetch_mantra_price() {
@@ -17,6 +17,19 @@ fetch_mantra_price() {
 # Fetch Mantra token price
 TOKEN_PRICE=$(fetch_mantra_price)
 echo "Current Mantra price: \$$TOKEN_PRICE"
+
+# Check if price is null or empty, try fallback endpoints
+if [ "$TOKEN_PRICE" == "null" ] || [ -z "$TOKEN_PRICE" ]; then
+    echo "Warning: CoinGecko API failed, trying fallback..."
+    # Try alternative source or use cached price from database
+    TOKEN_PRICE=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM mantra_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+    if [ -z "$TOKEN_PRICE" ] || [ "$TOKEN_PRICE" == "null" ]; then
+        TOKEN_PRICE="0"
+        echo "Could not fetch price, using default: \$$TOKEN_PRICE"
+    else
+        echo "Using cached price: \$$TOKEN_PRICE"
+    fi
+fi
 
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
 BASE_URL=""
@@ -94,7 +107,7 @@ TOTAL_REWARDS=$(awk "BEGIN {print $DELEGATOR_REWARDS + $VALIDATOR_COMMISSION}")
 
 
 # Insert new row into Postgres
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO mantra_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',

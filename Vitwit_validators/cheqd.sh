@@ -5,7 +5,7 @@ VALIDATOR="cheqdvaloper1svucqaevytxzkp9t2jvkmywj86at7268vwudph"
 ENDPOINTS="https://api.cheqd.net,https://rest.lavenderfive.com:443/cheqd,https://api-cheqd-ia.cosmosia.notional.ventures/,https://cheqd.api.m.stavr.tech,https://api.cheqd.nodestake.org,https://lcd-cheqd.whispernode.com:443,https://public.stakewolle.com/cosmos/cheqd/rest,https://cheqd-rest.publicnode.com"
 DENOM="ncheq"
 AMOUNT_VALUE="CHEQ "
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
@@ -23,7 +23,7 @@ echo "Current CHEQ price: \$$TOKEN_PRICE"
 if [ "$TOKEN_PRICE" == "null" ] || [ -z "$TOKEN_PRICE" ]; then
     echo "Warning: CoinGecko API failed, trying fallback..."
     # Try alternative source or use cached price from database
-    TOKEN_PRICE=$(PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM cheqd_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+    TOKEN_PRICE=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM cheqd_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
     if [ -z "$TOKEN_PRICE" ] || [ "$TOKEN_PRICE" == "null" ]; then
         TOKEN_PRICE="0"
         echo "Could not fetch price, using default: \$$TOKEN_PRICE"
@@ -102,7 +102,7 @@ TOTAL_REWARDS=$(awk "BEGIN {print $DELEGATOR_REWARDS + $VALIDATOR_COMMISSION}")
 
 
 # Insert new row into Postgres
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO cheqd_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',

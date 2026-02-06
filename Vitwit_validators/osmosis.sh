@@ -5,7 +5,7 @@ VALIDATOR="osmovaloper1ddle9tczl87gsvmeva3c48nenyng4n56yscals"
 ENDPOINTS="https://lcd.osmosis.zone/,https://rest.osmosis.goldenratiostaking.net,https://osmosis-lcd.quickapi.com:443,https://lcd-osmosis.blockapsis.com,https://rest.lavenderfive.com:443/osmosis,https://rest-osmosis.ecostake.com,https://api-osmosis-ia.cosmosia.notional.ventures,https://api-osmosis.cosmos-spaces.cloud"
 DENOM="uosmo"
 AMOUNT_VALUE="osmo"
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
@@ -18,6 +18,19 @@ fetch_osmo_price() {
 # Fetch OSMO token price
 TOKEN_PRICE=$(fetch_osmo_price)
 echo "Current OSMO price: \$$TOKEN_PRICE"
+
+# Check if price is null or empty, try fallback endpoints
+if [ "$TOKEN_PRICE" == "null" ] || [ -z "$TOKEN_PRICE" ]; then
+    echo "Warning: CoinGecko API failed, trying fallback..."
+    # Try alternative source or use cached price from database
+    TOKEN_PRICE=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM osmosis_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+    if [ -z "$TOKEN_PRICE" ] || [ "$TOKEN_PRICE" == "null" ]; then
+        TOKEN_PRICE="0"
+        echo "Could not fetch price, using default: \$$TOKEN_PRICE"
+    else
+        echo "Using cached price: \$$TOKEN_PRICE"
+    fi
+fi
 
 # Select first reachable endpoint
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
@@ -91,7 +104,7 @@ VALIDATOR_COMMISSION=${VALIDATOR_COMMISSION:-0}
 TOTAL_REWARDS=$(awk "BEGIN {print $DELEGATOR_REWARDS + $VALIDATOR_COMMISSION}")
 
 # Insert new row into Postgres
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO osmosis_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',

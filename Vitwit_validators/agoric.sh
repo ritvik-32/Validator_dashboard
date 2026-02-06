@@ -5,7 +5,7 @@ VALIDATOR="agoricvaloper1ev9nl6pl5trgvrc7chntj937m42aznn28crcs8"
 ENDPOINTS="https://main.api.agoric.net:443,https://agoric-api.polkachu.com,https://agoric.api.kjnodes.com,https://agoric-mainnet-lcd.autostake.com:443,https://api-agoric-01.stakeflow.io,https://agoric-rest.0base.dev,https://agoric-api.w3coins.io,https://api-agoric-ia.cosmosia.notional.ventures"
 DENOM="ubld"
 AMOUNT_VALUE="BLD "
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 
@@ -19,6 +19,18 @@ fetch_agoric_price() {
 TOKEN_PRICE=$(fetch_agoric_price)
 echo "Current Agoric price: \$$TOKEN_PRICE"
 
+# Check if price is null or empty, try fallback endpoints
+if [ "$TOKEN_PRICE" == "null" ] || [ -z "$TOKEN_PRICE" ]; then
+    echo "Warning: CoinGecko API failed, trying fallback..."
+    # Try alternative source or use cached price from database
+    TOKEN_PRICE=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM agoric_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+    if [ -z "$TOKEN_PRICE" ] || [ "$TOKEN_PRICE" == "null" ]; then
+        TOKEN_PRICE="0"
+        echo "Could not fetch price, using default: \$$TOKEN_PRICE"
+    else
+        echo "Using cached price: \$$TOKEN_PRICE"
+    fi
+fi
 
 # Select first reachable endpoint
 IFS=',' read -r -a EP_ARR <<< "$ENDPOINTS"
@@ -94,7 +106,7 @@ echo "Delegator rewards: $DELEGATOR_REWARDS $AMOUNT_VALUE"
 echo "Validator commission: $VALIDATOR_COMMISSION $AMOUNT_VALUE"
 echo "Total rewards: $TOTAL_REWARDS $AMOUNT_VALUE"
 
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO agoric_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',

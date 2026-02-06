@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Database configuration
-PGUSER="postgres"
-PGPASSWORD="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
+PGPORT="5432"
 
 # CoinGecko API endpoint
 COINGECKO_API="https://api.coingecko.com/api/v3"
@@ -18,13 +18,13 @@ get_network_info() {
                 AND table_name != 'total_rewards'"
     
     # Get the list of networks
-    local networks=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$query" | xargs -n1 | sed 's/_data//')
+    local networks=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$query" | xargs -n1 | sed 's/_data//')
     
     # For each network, get the token symbol from its table
     for net in $networks; do
         # Get the token symbol (assuming it's in the rewards field)
         local symbol_query="SELECT split_part(rewards, ' ', 2) FROM ${net}_data WHERE rewards IS NOT NULL AND rewards != '' LIMIT 1"
-        local symbol=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$symbol_query" 2>/dev/null | xargs)
+        local symbol=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$symbol_query" 2>/dev/null | xargs)
         
         if [ -n "$symbol" ] && [ "$symbol" != "(0 rows)" ]; then
             # Add to TOKEN_IDS array
@@ -44,7 +44,7 @@ get_network_info
 
 
 # Create total_rewards table if it doesn't exist
-PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" <<EOSQL
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" <<EOSQL
 CREATE TABLE IF NOT EXISTS total_rewards (
     id SERIAL PRIMARY KEY,
     total_self_delegations_usd NUMERIC(20, 2) NOT NULL,
@@ -66,7 +66,7 @@ get_network_price() {
     
     # Get the latest price from the network's data table
     local query="SELECT price FROM ${network}_data WHERE price IS NOT NULL AND price != 0 ORDER BY timestamp DESC LIMIT 1"
-    local price=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$query" 2>/dev/null | xargs)
+    local price=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "$query" 2>/dev/null | xargs)
     
     if [ -z "$price" ] || [ "$price" = "(0 rows)" ]; then
         echo "0"
@@ -102,7 +102,7 @@ TOTAL_EXTERNAL_USD=0
 TOTAL_REWARDS_USD=0
 
 # Get list of all network tables
-TABLES=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE '%_data' AND table_name != 'total_rewards'")
+TABLES=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE '%_data' AND table_name != 'total_rewards'")
 
 for TABLE in $TABLES; do
     # Extract network name from table name
@@ -110,7 +110,7 @@ for TABLE in $TABLES; do
     echo -n "Processing $NETWORK... "
     
     # Get the latest entry for this network
-    DATA=$(PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT self_delegations, external_delegations, rewards, timestamp FROM $TABLE ORDER BY timestamp DESC LIMIT 1")
+    DATA=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT self_delegations, external_delegations, rewards, timestamp FROM $TABLE ORDER BY timestamp DESC LIMIT 1")
     
     if [ -n "$DATA" ]; then
         # Parse the data and handle empty values
@@ -216,7 +216,7 @@ FORMATTED_EXTERNAL=$(printf "%.2f" "$TOTAL_EXTERNAL_USD" 2>/dev/null || echo "0.
 FORMATTED_REWARDS=$(printf "%.2f" "$TOTAL_REWARDS_USD" 2>/dev/null || echo "0.00")
 
 # Insert the totals into the database
-PGPASSWORD="$PGPASSWORD" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" <<EOSQL
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" <<EOSQL
 INSERT INTO total_rewards (
     total_self_delegations_usd,
     total_external_delegations_usd,

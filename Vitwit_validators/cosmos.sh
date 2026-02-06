@@ -5,7 +5,7 @@ VALIDATOR="cosmosvaloper1ddle9tczl87gsvmeva3c48nenyng4n56nghmjk"
 ENDPOINTS="https://lcd.cosmos.dragonstake.io,https://cosmos-rest.staketab.org,https://cosmoshub.lava.build:443,https://cosmos-lcd.quickapi.com:443,https://rest.cosmoshub.goldenratiostaking.net,https://rest.lavenderfive.com:443/cosmoshub,https://api-cosmoshub.pupmos.network,https://api-cosmoshub-ia.cosmosia.notional.ventures/,https://lcd-cosmoshub.whispernode.com:443,https://cosmos-lcd.easy2stake.com"
 DENOM="uatom"
 AMOUNT_VALUE="ATOM"
-PGUSER="postgres"
+PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 fetch_atom_price() {
@@ -22,7 +22,7 @@ echo "Current ATOM price: \$$TOKEN_PRICE"
 if [ "$TOKEN_PRICE" == "null" ] || [ -z "$TOKEN_PRICE" ]; then
     echo "Warning: CoinGecko API failed, trying fallback..."
     # Try alternative source or use cached price from database
-    TOKEN_PRICE=$(PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM cosmos_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+    TOKEN_PRICE=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c "SELECT price FROM cosmos_data ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
     if [ -z "$TOKEN_PRICE" ] || [ "$TOKEN_PRICE" == "null" ]; then
         TOKEN_PRICE="0"
         echo "Could not fetch price, using default: \$$TOKEN_PRICE"
@@ -104,7 +104,7 @@ echo delegator_rewards: $DELEGATOR_REWARDS $AMOUNT_VALUE
 echo Total_rewards: $TOTAL_REWARDS $AMOUNT_VALUE
 
 # Insert new row into Postgres
-PGPASSWORD="postgres" psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
+psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
 INSERT INTO cosmos_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
 VALUES (
   '$VALIDATOR',
