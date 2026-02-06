@@ -103,16 +103,31 @@ VALIDATOR_COMMISSION=${VALIDATOR_COMMISSION:-0}
 
 TOTAL_REWARDS=$(awk "BEGIN {print $DELEGATOR_REWARDS + $VALIDATOR_COMMISSION}")
 
+# Fetch previous total rewards for delta calculation
+PREVIOUS_TOTAL_REWARDS=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c \
+  "SELECT CAST(SPLIT_PART(total_rewards, ' ', 1) AS NUMERIC) 
+   FROM osmosis_data 
+   ORDER BY timestamp DESC 
+   LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+
+PREVIOUS_TOTAL_REWARDS=${PREVIOUS_TOTAL_REWARDS:-0}
+echo "Previous total rewards: $PREVIOUS_TOTAL_REWARDS"
+
+# Calculate delta
+REWARDS_DELTA=$(awk "BEGIN {print $TOTAL_REWARDS - $PREVIOUS_TOTAL_REWARDS}")
+echo "Rewards delta: $REWARDS_DELTA"
+
 # Insert new row into Postgres
 psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO osmosis_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
+INSERT INTO osmosis_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price, rewards_delta)
 VALUES (
   '$VALIDATOR',
   '$SELF_DELEGATIONS $AMOUNT_VALUE',
   '$EXTERNAL_DELEGATIONS $AMOUNT_VALUE',
   '$OUTSTANDING_TOTAL $AMOUNT_VALUE',
   '$TOTAL_REWARDS $AMOUNT_VALUE',
-  $TOKEN_PRICE
+  $TOKEN_PRICE,
+  '$REWARDS_DELTA'
 );
 "
 

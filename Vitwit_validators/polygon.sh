@@ -68,17 +68,31 @@ echo "Unclaimed Validator Rewards: $(awk "BEGIN {print $VALIDATOR_UNCLAIMED_WEI 
 echo "Commission: $(awk "BEGIN {print $COMMISSION_AMOUNT / 1e18}") $AMOUNT_VALUE"
 echo "Total Rewards: $TOTAL_REWARDS $AMOUNT_VALUE"
 
+# Fetch previous total rewards for delta calculation
+PREVIOUS_TOTAL_REWARDS=$(psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -t -c \
+  "SELECT CAST(SPLIT_PART(total_rewards, ' ', 1) AS NUMERIC) 
+   FROM polygon_data 
+   ORDER BY timestamp DESC 
+   LIMIT 1;" 2>/dev/null | awk '{print $1}' | head -1)
+
+PREVIOUS_TOTAL_REWARDS=${PREVIOUS_TOTAL_REWARDS:-0}
+echo "Previous total rewards: $PREVIOUS_TOTAL_REWARDS"
+
+# Calculate delta
+REWARDS_DELTA=$(awk "BEGIN {print $TOTAL_REWARDS - $PREVIOUS_TOTAL_REWARDS}")
+echo "Rewards delta: $REWARDS_DELTA"
 
 ######
 psql -U "$PGUSER" -d "$PGDATABASE" -h "$PGHOST" -c "
-INSERT INTO polygon_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price)
+INSERT INTO polygon_data (validator_addr, self_delegations, external_delegations, rewards, total_rewards, price, rewards_delta)
 VALUES (
   '0xae09a7bcbcff2fd81f98f90eda73bd80b6883741',
   '$SELF_STAKE $AMOUNT_VALUE',
   '$EXTERNAL_STAKE $AMOUNT_VALUE',
   '$VAL_UNCLAIMED_TOTAL $AMOUNT_VALUE',
   '$TOTAL_REWARDS $AMOUNT_VALUE',
-  $TOKEN_PRICE
+  $TOKEN_PRICE,
+  '$REWARDS_DELTA'
 );
 "
 
