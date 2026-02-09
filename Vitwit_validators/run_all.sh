@@ -11,9 +11,6 @@ SCRIPTS=(
   "cheqd.sh"
   "cosmos.sh"
   "mantra.sh"
-  "nomic.sh"
-  "namada.sh"
-  "osmosis.sh"
   "passage.sh"
   "polygon.sh"
   "regen.sh"
@@ -24,7 +21,7 @@ for script in "${SCRIPTS[@]}"; do
   echo "Running $script..."
   bash "$script"
   echo "Finished $script. Waiting 10 seconds..."
-  sleep 10
+  sleep 20
 done
 
 # Run total_rewards.sh last
