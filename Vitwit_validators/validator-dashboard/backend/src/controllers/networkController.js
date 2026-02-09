@@ -4,7 +4,7 @@ const moment = require('moment');
 
 const networks = [
   'cosmos', 'polygon', 'avail', 'cheqd',
-  'passage', 'mantra', 'namada', 'osmosis', 'agoric', 'nomic', 'regen', 'akash'
+  'passage', 'mantra', 'agoric', 'regen', 'akash'
 ];
 
 const ALL_NETWORKS = 'all';

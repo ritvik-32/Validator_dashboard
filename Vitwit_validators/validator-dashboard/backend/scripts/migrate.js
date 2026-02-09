@@ -2,8 +2,8 @@ const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
 const networks = [
-  'cosmos', 'polygon', 'avail', 'ika', 'cheqd',
-  'passage', 'mantra', 'namada', 'osmosis', 'agoric', 'nomic', 'regen', 'akash'
+  'cosmos', 'polygon', 'avail', 'cheqd',
+  'passage', 'mantra', 'agoric', 'regen', 'akash'
 ];
 
 const sequelize = new Sequelize(
