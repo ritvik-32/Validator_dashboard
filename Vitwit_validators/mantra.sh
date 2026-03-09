@@ -3,17 +3,16 @@
 DELEGATOR="mantra1caw6djrt9gz2m4qpgulypdfm8yrrx59fc5vc6n"
 VALIDATOR="mantravaloper1caw6djrt9gz2m4qpgulypdfm8yrrx59fu0dkkk"
 ENDPOINTS="https://api.mantrachain.io,https://api-mantra.r93axnodes.cloud:443,https://mantrachain-mainnet-lcd.autostake.com:443,https://mantra-rest.publicnode.com,https://mantra-mainnet-api.itrocket.net,https://mantra.api.m.stavr.tech"
-DENOM="uom"
-AMOUNT_VALUE="om"
+DENOM="aMANTRA"
+AMOUNT_VALUE="MANTRA"
 PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
 PGHOST="localhost"
 fetch_mantra_price() {
     local price_data
-    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=mantra-dao&vs_currencies=usd")
-    echo "$price_data" | jq -r '.["mantra-dao"].usd'
+    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=mantra&vs_currencies=usd")
+    echo "$price_data" | jq -r '.mantra.usd'
 }
-
 # Fetch Mantra token price
 TOKEN_PRICE=$(fetch_mantra_price)
 echo "Current Mantra price: \$$TOKEN_PRICE"
@@ -58,20 +57,20 @@ echo "Using endpoint: $BASE_URL"
 
 # Fetch overall delegations
 OVERALL_RAW=$(curl -s "$BASE_URL/cosmos/staking/v1beta1/validators/$VALIDATOR")
-OVERALL_DELEGATIONS=$(echo "$OVERALL_RAW" | jq -r '.validator.tokens | tonumber / 1000000')
+OVERALL_DELEGATIONS=$(echo "$OVERALL_RAW" | jq -r '.validator.tokens | tonumber / 1000000000000000000')
 
 # Fetch self delegations
 SELF_RAW=$(curl -s "$BASE_URL/cosmos/staking/v1beta1/delegations/$DELEGATOR")
 SELF_DELEGATIONS=$(echo "$SELF_RAW" | jq -r \
   --arg VAL "$VALIDATOR" \
-  '.delegation_responses[] | select(.delegation.validator_address==$VAL) | .balance.amount | tonumber / 1000000')
+  '.delegation_responses[] | select(.delegation.validator_address==$VAL) | .balance.amount | tonumber / 1000000000000000000')
 
 # Calculate external delegations
 EXTERNAL_DELEGATIONS=$(awk "BEGIN {print $OVERALL_DELEGATIONS - $SELF_DELEGATIONS}")
 
 # Fetch rewards for the given denom
 OUTSTANDING_RAW=$(curl -s "$BASE_URL/cosmos/distribution/v1beta1/validators/$VALIDATOR/outstanding_rewards") 
-OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewards.rewards[] | select(.denom==$DEN) | .amount | tonumber / 1000000] | add')
+OUTSTANDING_TOTAL=$(echo "$OUTSTANDING_RAW" | jq -r --arg DEN "$DENOM" ' [.rewards.rewards[] | select(.denom==$DEN) | .amount | tonumber / 1000000000000000000] | add')
 OUTSTANDING_TOTAL=${OUTSTANDING_TOTAL:-0}
 
 
@@ -85,7 +84,7 @@ DELEGATOR_REWARDS=$(echo "$DELEGATOR_REWARDS_RAW" \
         .rewards[]
         | select(.denom == $DEN)
         | .amount
-        | tonumber / 1000000
+        | tonumber / 1000000000000000000
     ')
 
 DELEGATOR_REWARDS=${DELEGATOR_REWARDS:-0}
@@ -98,7 +97,7 @@ VALIDATOR_COMMISSION=$(echo "$VALIDATOR_COMMISSION_RAW" \
         .commission.commission[]
         | select(.denom == $DEN)
         | .amount
-        | tonumber / 1000000
+        | tonumber / 1000000000000000000
     ')
 VALIDATOR_COMMISSION=${VALIDATOR_COMMISSION:-0}
 
@@ -131,8 +130,3 @@ VALUES (
   '$REWARDS_DELTA'
 );
 "
-
-
-
-
-

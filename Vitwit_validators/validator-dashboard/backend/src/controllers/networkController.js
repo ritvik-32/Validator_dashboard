@@ -155,12 +155,18 @@ exports.getNetworkLatestData = async (req, res) => {
 
   const tableName = `${network}_data`;
   try {
+    // Use window function for better compatibility
     const data = await db.query(
-      `SELECT DISTINCT ON (validator_addr) * FROM ${tableName} ORDER BY validator_addr, timestamp DESC`,
+      `SELECT * FROM (
+        SELECT *,
+        ROW_NUMBER() OVER (PARTITION BY validator_addr ORDER BY timestamp DESC) as rn
+        FROM ${tableName}
+      ) t WHERE rn = 1`,
       { type: QueryTypes.SELECT }
     );
     res.json(data);
   } catch (e) {
+    console.error(`Error fetching latest data for ${network}:`, e);
     res.status(500).json({ error: 'DB error', details: e.message });
   }
 };
