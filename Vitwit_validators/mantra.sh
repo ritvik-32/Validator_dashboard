@@ -3,7 +3,7 @@
 DELEGATOR="mantra1caw6djrt9gz2m4qpgulypdfm8yrrx59fc5vc6n"
 VALIDATOR="mantravaloper1caw6djrt9gz2m4qpgulypdfm8yrrx59fu0dkkk"
 ENDPOINTS="https://api.mantrachain.io,https://api-mantra.r93axnodes.cloud:443,https://mantrachain-mainnet-lcd.autostake.com:443,https://mantra-rest.publicnode.com,https://mantra-mainnet-api.itrocket.net,https://mantra.api.m.stavr.tech"
-DENOM="aMANTRA"
+DENOM="amantra"
 AMOUNT_VALUE="MANTRA"
 PGUSER="vitwit"
 PGDATABASE="validator_dashboard"
